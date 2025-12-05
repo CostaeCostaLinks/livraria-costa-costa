@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* --- TEMA CLARO (Light Mode) --- */
+    --background: 0 0% 100%;
+    --foreground: 166 46% 15%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 166 46% 15%;
+    
+    /* Adicionado: Cores para Menus Suspensos (Popovers) */
+    --popover: 0 0% 100%;
+    --popover-foreground: 166 46% 15%;
+    
+    /* PRIMARY: VERDE ESMERALDA */
+    --primary: 159 64% 45%; 
+    --primary-foreground: 0 0% 100%;
+    
+    /* SECONDARY: OURO PÁLIDO */
+    --secondary: 48 100% 96%;
+    --secondary-foreground: 38 92% 30%;
+    
+    /* ACCENT: OURO METÁLICO */
+    --accent: 45 93% 47%;
+    --accent-foreground: 0 0% 100%;
+    
+    --muted: 160 20% 96%;
+    --muted-foreground: 166 20% 45%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 160 20% 90%;
+    --input: 160 20% 90%;
+    --ring: 159 64% 45%;
+    
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* --- TEMA ESCURO (Dark Mode) --- */
+    --background: 166 46% 8%;
+    --foreground: 160 20% 98%;
+    
+    --card: 166 46% 12%;
+    --card-foreground: 160 20% 98%;
+    
+    /* Adicionado: Cores para Menus Suspensos no Dark Mode */
+    --popover: 166 46% 12%;
+    --popover-foreground: 160 20% 98%;
+    
+    --primary: 159 50% 50%; 
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 38 92% 15%;
+    --secondary-foreground: 45 93% 60%;
+    
+    --muted: 166 30% 20%;
+    --muted-foreground: 160 10% 70%;
+    
+    --accent: 45 80% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 166 30% 20%;
+    --input: 166 30% 20%;
+    --ring: 159 50% 50%;
+  }
+  
+  .sepia {
+    --background: 38 40% 94%;
+    --foreground: 25 25% 30%;
+    --primary: 25 30% 45%;
+    --primary-foreground: 38 40% 94%;
+    --secondary: 38 30% 88%;
+    --border: 38 20% 82%;
+    /* Popover Sépia */
+    --popover: 38 40% 94%;
+    --popover-foreground: 25 25% 30%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  .font-serif { font-family: 'Merriweather', serif; }
+  .font-sans { font-family: 'Inter', sans-serif; }
+}
+
+.touch-auto { 
+  touch-action: auto !important; 
+}
