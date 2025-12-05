@@ -1,207 +1,236 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { toast } from 'sonner';
-import { BookOpen, User, Phone, Mail, Lock } from 'lucide-react';
+import { BookOpen, User, Phone, Mail, Lock, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export default function Auth() {
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const [loading, setLoading] = useState(false);
-
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
   
-  // Novos campos no estado de cadastro
-  const [signupData, setSignupData] = useState({ 
+  // Estado para alternar entre Login e Cadastro (sem usar Tabs do shadcn para ter mais liberdade visual)
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
     fullName: '',
-    phone: '',
-    email: '', 
-    password: ''
+    phone: ''
   });
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: loginData.email,
-        password: loginData.password,
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        // Busca o perfil completo (incluindo nome e telefone)
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
-
-        login({
-          id: data.user.id,
-          email: data.user.email!,
-          name: profile?.full_name || 'Leitor',
-          phone: profile?.phone,
-          role: profile?.role || 'user',
-        });
-
-        toast.success(`Bem-vindo de volta, ${profile?.full_name?.split(' ')[0] || 'Leitor'}!`);
-        navigate('/');
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao fazer login');
-    } finally {
-      setLoading(false);
-    }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // 1. Cria o usuário na autenticação
-      const { data, error } = await supabase.auth.signUp({
-        email: signupData.email,
-        password: signupData.password,
-        options: {
-          data: {
-            full_name: signupData.fullName, // Salva no metadados também por segurança
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        // 2. Atualiza a tabela de perfis com Nome e Telefone
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .update({
-            full_name: signupData.fullName,
-            phone: signupData.phone
-          })
-          .eq('id', data.user.id);
-
-        if (profileError) {
-          console.error('Erro ao salvar perfil:', profileError);
-          // Não bloqueia o fluxo, mas avisa no console
-        }
-
-        toast.success('Conta criada com sucesso!');
-        
-        // Login automático
-        login({
-          id: data.user.id,
-          email: data.user.email!,
-          name: signupData.fullName,
-          phone: signupData.phone,
-          role: 'user',
+      if (isSignUp) {
+        // --- LÓGICA DE CADASTRO ---
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: { data: { full_name: formData.fullName } },
         });
 
-        navigate('/');
+        if (error) throw error;
+
+        if (data.user) {
+          // Atualiza perfil com telefone
+          const { error: profileError } = await supabase
+            .from('user_profiles')
+            .update({ full_name: formData.fullName, phone: formData.phone })
+            .eq('id', data.user.id);
+
+          if (profileError) console.error('Erro perfil:', profileError);
+
+          toast.success('Conta criada com sucesso!');
+          login({
+            id: data.user.id,
+            email: data.user.email!,
+            name: formData.fullName,
+            phone: formData.phone,
+            role: 'user',
+          });
+          navigate('/');
+        }
+      } else {
+        // --- LÓGICA DE LOGIN ---
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+
+          login({
+            id: data.user.id,
+            email: data.user.email!,
+            name: profile?.full_name || 'Leitor',
+            phone: profile?.phone,
+            role: profile?.role || 'user',
+          });
+
+          toast.success(`Bem-vindo, ${profile?.full_name?.split(' ')[0] || 'Leitor'}!`);
+          navigate('/');
+        }
       }
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao criar conta');
+      toast.error(error.message || 'Erro na autenticação');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md animate-in fade-in zoom-in duration-300 border-primary/20 shadow-xl">
-        <CardHeader className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="h-16 w-16 rounded-xl bg-primary/10 flex items-center justify-center shadow-inner">
-              <BookOpen className="h-8 w-8 text-primary" />
+    <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-yellow-500 selection:text-slate-900">
+      
+      {/* --- EFEITOS VISUAIS (Aurora Background - Igual Costa Links) --- */}
+      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-yellow-500/10 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-pulse"></div>
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full mix-blend-screen filter blur-[128px] opacity-30 animate-pulse"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150"></div>
+      </div>
+
+      <Link to="/" className="absolute top-8 left-8 flex items-center gap-2 text-slate-400 hover:text-white font-medium transition-colors z-20 group">
+        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Voltar para Home
+      </Link>
+
+      <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700 relative z-10">
+        
+        {/* LOGO */}
+        <div className="flex flex-col items-center justify-center mb-8 transform hover:scale-105 transition-transform duration-500">
+          <div className="bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-xl p-3 shadow-lg shadow-yellow-500/20 mb-4">
+             <BookOpen className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="font-serif font-bold text-3xl text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-500 to-yellow-600 drop-shadow-sm">
+            Costa & Costa
+          </h1>
+          <span className="text-[10px] font-medium tracking-[0.3em] text-slate-500 uppercase mt-1">Library Edition</span>
+        </div>
+
+        {/* CARD GLASSMORPHISM */}
+        <div className="bg-slate-900/60 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-white/10 relative overflow-hidden group">
+          
+          {/* Brilho no topo do card */}
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent opacity-50"></div>
+
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-serif font-bold text-white mb-2 flex items-center justify-center gap-2">
+              {isSignUp ? 'Crie sua conta' : 'Acesse sua Biblioteca'}
+              {isSignUp && <Sparkles className="w-5 h-5 text-yellow-500 animate-pulse" />}
+            </h2>
+            <p className="text-slate-400 text-sm">
+              {isSignUp ? 'Junte-se à comunidade de leitores.' : 'Continue sua leitura de onde parou.'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            
+            {/* CAMPOS EXTRAS DE CADASTRO */}
+            {isSignUp && (
+              <>
+                <div className="space-y-2">
+                    <div className="relative">
+                        <User className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                        <Input 
+                            name="fullName"
+                            placeholder="Nome Completo" 
+                            className="pl-9 bg-slate-950/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20 h-11" 
+                            value={formData.fullName} 
+                            onChange={handleChange} 
+                            required 
+                        />
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <div className="relative">
+                        <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                        <Input 
+                            name="phone"
+                            placeholder="WhatsApp (com DDD)" 
+                            className="pl-9 bg-slate-950/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20 h-11" 
+                            value={formData.phone} 
+                            onChange={handleChange} 
+                            required 
+                        />
+                    </div>
+                </div>
+              </>
+            )}
+
+            {/* CAMPOS PADRÃO (LOGIN/EMAIL) */}
+            <div className="space-y-2">
+                <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                    <Input 
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="E-mail" 
+                        className="pl-9 bg-slate-950/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20 h-11" 
+                        value={formData.email} 
+                        onChange={handleChange} 
+                        required 
+                    />
+                </div>
             </div>
+
+            <div className="space-y-2">
+                <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                    <Input 
+                        name="password"
+                        type="password"
+                        autoComplete={isSignUp ? "new-password" : "current-password"}
+                        placeholder="Senha" 
+                        className="pl-9 bg-slate-950/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20 h-11" 
+                        value={formData.password} 
+                        onChange={handleChange} 
+                        required 
+                        minLength={6}
+                    />
+                </div>
+            </div>
+
+            <Button 
+                type="submit" 
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold h-12 rounded-xl text-base shadow-lg shadow-yellow-500/20 transition-all hover:scale-[1.02] active:scale-95" 
+                disabled={loading}
+            >
+              {loading ? 'Processando...' : (isSignUp ? 'Criar Conta Gratuita' : 'Entrar na Biblioteca')}
+            </Button>
+          </form>
+
+          {/* TOGGLE LOGIN/CADASTRO */}
+          <div className="mt-8 pt-6 border-t border-white/10 text-center">
+            <p className="text-sm text-slate-400 mb-2">
+              {isSignUp ? 'Já tem uma conta?' : 'Ainda não tem conta?'}
+            </p>
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="font-bold text-white hover:text-yellow-500 transition-colors inline-flex items-center gap-1 group/link text-sm"
+            >
+              {isSignUp ? 'Fazer Login' : 'Criar agora'} 
+              <ArrowRight className="w-3 h-3 group-hover/link:translate-x-1 transition-transform" />
+            </button>
           </div>
-          <div>
-            <CardTitle className="text-3xl font-serif font-bold text-primary">Costa & Costa</CardTitle>
-            <CardDescription className="tracking-widest uppercase text-xs mt-1">Library</CardDescription>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="login">Entrar</TabsTrigger>
-              <TabsTrigger value="signup">Cadastrar</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="login-email" type="email" className="pl-9" value={loginData.email} onChange={(e) => setLoginData({ ...loginData, email: e.target.value })} required />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Senha</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="login-password" type="password" className="pl-9" value={loginData.password} onChange={(e) => setLoginData({ ...loginData, password: e.target.value })} required />
-                  </div>
-                </div>
-                <Button type="submit" className="w-full font-bold" disabled={loading}>
-                  {loading ? 'Entrando...' : 'Acessar Biblioteca'}
-                </Button>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Nome Completo</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="fullName" placeholder="Ex: João Silva" className="pl-9" value={signupData.fullName} onChange={(e) => setSignupData({ ...signupData, fullName: e.target.value })} required />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefone (WhatsApp)</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="phone" placeholder="(00) 90000-0000" className="pl-9" value={signupData.phone} onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })} required />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="signup-email" type="email" className="pl-9" value={signupData.email} onChange={(e) => setSignupData({ ...signupData, email: e.target.value })} required />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Senha</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="signup-password" type="password" className="pl-9" value={signupData.password} onChange={(e) => setSignupData({ ...signupData, password: e.target.value })} required minLength={6} />
-                  </div>
-                </div>
-
-                <Button type="submit" className="w-full font-bold" disabled={loading}>
-                  {loading ? 'Criando conta...' : 'Criar Conta Gratuita'}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
