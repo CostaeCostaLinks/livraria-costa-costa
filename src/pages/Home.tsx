@@ -4,7 +4,7 @@ import { useBooks } from '@/hooks/useBooks';
 import { BookCard } from '@/components/features/BookCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, BookOpen, Sparkles, TrendingUp } from 'lucide-react';
+import { Search, BookOpen, Sparkles, TrendingUp, BookOpenCheck } from 'lucide-react';
 
 const CATEGORIES = [
   'Todos', 'Ficção', 'Romance', 'Fantasia', 'Suspense', 'Clássicos', 
@@ -27,9 +27,9 @@ export default function Home() {
     book.author.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // MUDANÇA: bg-gray-50/50 -> bg-slate-50 (Mais limpo)
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
+      {/* CORRIGIDO: O fundo do banner usa cores escuras (slate-900) e amarelo (amber) como originalmente no Home.tsx */}
       <div className="relative bg-slate-900 text-white overflow-hidden mb-10">
         <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-slate-800/50 to-transparent"></div>
         <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-amber-500/20 rounded-full blur-3xl"></div>
@@ -69,6 +69,8 @@ export default function Home() {
           </div>
         </div>
       </div>
+      {/* FIM DO BANNER PRINCIPAL */}
+
 
       <div className="container mx-auto px-4 space-y-12">
         <div className="space-y-4">
@@ -88,8 +90,8 @@ export default function Home() {
                 size="sm"
                 className={`rounded-full border transition-all ${
                   selectedCategory === category 
-                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-900' 
-                    : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600 font-medium'
+                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-900 text-white' // Corrigido para cores da Livraria
+                    : 'bg-white hover:bg-slate-900 border-slate-200 text-slate-600 font-medium'
                 }`}
               >
                 {category}
@@ -97,6 +99,26 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        {/* CORRIGIDO: CTA DE ALTO IMPACTO PARA O WORKBOOK - Usando Cores da Livraria */}
+        <div className="bg-slate-900 text-white p-8 rounded-xl shadow-lg border-b-4 border-amber-500 text-center">
+            <Sparkles className="h-8 w-8 text-amber-400 mx-auto mb-3" />
+            <h3 className="text-2xl md:text-3xl font-serif font-bold mb-2">
+                Descubra sua Rota Pessoal
+            </h3>
+            <p className="text-base text-slate-300 mb-6 max-w-lg mx-auto">
+                Mapeie as 12 principais Cicatrizes Emocionais que moldaram sua história com nossa Ferramenta Interativa.
+            </p>
+            <Button
+                asChild
+                className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-8 rounded-full shadow-lg transition duration-300 transform hover:scale-105"
+            >
+                <a href="https://mapa.costalinks.com.br" target="_blank" rel="noopener noreferrer">
+                    <BookOpenCheck className="h-5 w-5 mr-2" /> ACESSE O WORKBOOK GRATUITO
+                </a>
+            </Button>
+        </div>
+        {/* FIM DA CORREÇÃO CTA */}
 
         <div className="space-y-6">
           <div className="flex items-center gap-3 border-b border-slate-200 pb-4">

@@ -42,7 +42,7 @@ const queryClient = new QueryClient({
 function AppContent() {
   const { user, loading, logout } = useAuth();
   const { isInstallable, installApp } = usePWAInstall();
-  const { theme, toggle } = useTheme();
+  const { theme, toggle } = useTheme(); // Corrigido: usando 'toggle'
   const location = useLocation();
 
   useEffect(() => {
@@ -120,7 +120,6 @@ function AppContent() {
                   <Link to="/blog">Blog</Link>
                 </Button>
                 
-                {/* NOVO: Botão Bio/Links Desktop */}
                 <Button 
                   variant={location.pathname === '/links' ? 'secondary' : 'ghost'} 
                   size="sm" 
@@ -129,6 +128,19 @@ function AppContent() {
                 >
                   <Link to="/links">Bio / Links</Link>
                 </Button>
+
+                {/* CORRIGIDO: Botão Workbook Desktop - Usando cores da Livraria */}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  asChild
+                  className={'text-amber-600 font-semibold hover:text-amber-800'} 
+                >
+                  <a href="https://mapa.costalinks.com.br" target="_blank">
+                    <BookOpenCheck className="h-4 w-4 mr-1"/> Workbook
+                  </a>
+                </Button>
+                {/* FIM CORREÇÃO */}
 
                 {user.role === 'admin' && (
                   <Button 
@@ -233,7 +245,6 @@ function AppContent() {
               <span className="text-[10px] font-medium">Blog</span>
             </Link>
 
-            {/* NOVO: Botão Bio Mobile */}
             <Link 
               to="/links" 
               className={`flex flex-col items-center w-full space-y-1 ${location.pathname === '/links' ? 'text-primary' : 'text-muted-foreground'}`}
@@ -241,6 +252,17 @@ function AppContent() {
               <LinkIcon className={`h-5 w-5 ${location.pathname === '/links' ? 'fill-current' : ''}`} />
               <span className="text-[10px] font-medium">Bio</span>
             </Link>
+
+            {/* CORRIGIDO: Botão Workbook Mobile - Usando cores da Livraria */}
+            <a 
+              href="https://mapa.costalinks.com.br" 
+              target="_blank"
+              className={`flex flex-col items-center w-full space-y-1 text-amber-600 hover:text-amber-800`} // Cores de destaque da Livraria
+            >
+              <BookOpenCheck className={`h-5 w-5 fill-current`} />
+              <span className="text-[10px] font-medium">Workbook</span>
+            </a>
+            {/* FIM CORREÇÃO */}
 
             {user.role === 'admin' && (
               <Link 
