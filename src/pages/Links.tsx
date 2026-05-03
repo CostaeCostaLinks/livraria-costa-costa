@@ -29,7 +29,7 @@ export default function LinksPage() {
     {
       title: "O Método VAP",
       subtitle: "Curso de Vendas de Alta Performance",
-      url: "https://metodovap.fipei.com.br/",
+      url: "https://metodovap.costalinks.com.br/",
       icon: <GraduationCap className="h-6 w-6" />,
     },
     {

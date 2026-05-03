@@ -104,6 +104,14 @@ export default function PostView() {
     } catch (e) { console.error(e); }
   };
 
+  // Função para converter link normal do YouTube em link de Player Embed
+  const getYouTubeEmbedUrl = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
+  };
+
   if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-amber-600" /></div>;
   if (!post) return <div className="h-screen flex items-center justify-center flex-col gap-4"><p>Artigo não encontrado</p><Button onClick={() => navigate("/blog")}>Voltar ao Blog</Button></div>;
 
@@ -230,10 +238,26 @@ export default function PostView() {
             style={{ fontSize: `${fontSize}px` }}
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processedContent) }}
         />
+        
+        {/* VÍDEO DO YOUTUBE DINÂMICO AQUI */}
+        {post.video_url && getYouTubeEmbedUrl(post.video_url) && (
+            <div className="mt-12 mb-8 aspect-video rounded-xl overflow-hidden shadow-xl border border-slate-100 print:hidden">
+                <iframe
+                    width="100%"
+                    height="100%"
+                    src={getYouTubeEmbedUrl(post.video_url)!}
+                    title="YouTube video player"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                ></iframe>
+            </div>
+        )}
            
         <div className="mt-16 pt-10 border-t border-slate-200 text-center print:hidden">
             
-            {/* NOVO BLOCO DO AUTOR */}
+            {/* BLOCO DO AUTOR */}
             <div className="bg-slate-50 rounded-xl p-6 mb-8 border border-slate-100 text-center md:text-left flex flex-col md:flex-row items-center gap-6">
               <div className="relative shrink-0">
                 <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-amber-500/20 shadow-md">

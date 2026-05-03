@@ -37,7 +37,7 @@ export default function Admin() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  const [postForm, setPostForm] = useState({ title: '', subtitle: '', content: '' });
+  const [postForm, setPostForm] = useState({ title: '', subtitle: '', content: '', video_url: '' });
   const [postCover, setPostCover] = useState<File | null>(null);
 
   useEffect(() => {
@@ -107,7 +107,6 @@ export default function Admin() {
     e.preventDefault();
     if (!editingBookId && !bookFile) return toast.error('Selecione o arquivo do livro.');
     
-    // VALIDAÇÕES ADICIONADAS AQUI
     if (bookFile && !bookFile.name.match(/\.(pdf|epub)$/i)) {
       return toast.error("O arquivo do livro deve ser PDF ou EPUB.");
     }
@@ -118,12 +117,10 @@ export default function Admin() {
     setLoading(true);
     try {
       let bookUrl = null, coverUrl = null;
-      let fileType = 'pdf'; // padrão
+      let fileType = 'pdf';
 
       if (bookFile) {
-        // Detecta extensão
         if (bookFile.name.toLowerCase().endsWith('.epub')) fileType = 'epub';
-        
         const name = `livro-${Date.now()}.${bookFile.name.split('.').pop()}`;
         await supabase.storage.from('books').upload(name, bookFile);
         bookUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
@@ -138,7 +135,7 @@ export default function Admin() {
       const payload: any = { ...bookForm };
       if (bookUrl) { 
         payload.file_url = bookUrl; 
-        payload.file_type = fileType; // Salva o tipo correto no banco
+        payload.file_type = fileType; 
       }
       if (coverUrl) payload.cover_url = coverUrl;
 
@@ -152,6 +149,7 @@ export default function Admin() {
     } catch (error) { toast.error('Erro ao salvar livro'); } finally { setLoading(false); }
   };
 
+  // FUNÇÃO RESTAURADA AQUI!
   const deleteBook = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este livro?')) {
       await supabase.from('books').delete().eq('id', id);
@@ -162,7 +160,6 @@ export default function Admin() {
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // VALIDAÇÃO DE CAPA DO POST
     if (postCover && !postCover.name.match(/\.(jpg|jpeg|png|webp)$/i)) {
       return toast.error("A capa deve ser uma imagem (JPG, PNG, WEBP).");
     }
@@ -177,10 +174,12 @@ export default function Admin() {
       }
       const payload: any = { ...postForm };
       if (coverUrl) payload.cover_url = coverUrl;
+      
       if (editingPostId) await supabase.from('posts').update(payload).eq('id', editingPostId);
       else await supabase.from('posts').insert(payload);
+      
       toast.success('Post publicado com sucesso!');
-      setEditingPostId(null); setPostForm({ title: '', subtitle: '', content: '' }); setPostCover(null);
+      setEditingPostId(null); setPostForm({ title: '', subtitle: '', content: '', video_url: '' }); setPostCover(null);
       queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
     } catch (error) { toast.error('Erro ao salvar post'); } finally { setLoading(false); }
   };
@@ -247,10 +246,11 @@ export default function Admin() {
                 <Input placeholder="Título do Artigo" value={postForm.title} onChange={e => setPostForm({...postForm, title: e.target.value})} required />
                 <Input placeholder="Subtítulo (Opcional)" value={postForm.subtitle} onChange={e => setPostForm({...postForm, subtitle: e.target.value})} />
                 
+                <Input placeholder="Link do Vídeo no YouTube (Opcional)" value={postForm.video_url || ''} onChange={e => setPostForm({...postForm, video_url: e.target.value})} />
+                
                 <div className="space-y-2">
                   <Label>Conteúdo (Selecione o texto para formatar)</Label>
                   
-                  {/* BARRA DE FERRAMENTAS */}
                   <div className="flex flex-wrap gap-1 p-1 bg-muted rounded-md border border-border w-full mb-1">
                     <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => applyFormat('bold')} title="Negrito">
                       <Bold className="h-4 w-4" />
