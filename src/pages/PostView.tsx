@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import DOMPurify from "dompurify";
+import { Helmet } from 'react-helmet-async';
 import {
   ArrowLeft, Share2, Calendar, Loader2, Type, 
   Minus, Plus, AlignLeft, AlignJustify, ChevronUp, ChevronDown, Printer, Clock
@@ -117,6 +118,12 @@ export default function PostView() {
 
   return (
     <div className="min-h-screen bg-white pb-24 relative selection:bg-amber-200 selection:text-amber-900">
+      
+      <Helmet>
+        <title>{post.title} | Costa & Costa Library</title>
+        <meta name="description" content={post.subtitle || "Leia este artigo completo na Costa & Costa Library."} />
+        {post.cover_url && <meta property="og:image" content={post.cover_url} />}
+      </Helmet>
       
       <style>{`
         @media print {
