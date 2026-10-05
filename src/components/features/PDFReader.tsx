@@ -25,12 +25,14 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const currentPageRef = useRef(initialPage);
-  const renderedPagesRef = useRef<Set<number>>(new Set());
-  const restoreDoneRef = useRef(false);
-  const restoreHintTimerRef = useRef<number | null>(null);
+  const restoreTimersRef = useRef<number[]>([]);
+  const scrollFrameRef = useRef<number | null>(null);
   const touchRef = useRef<{ dist: number } | null>(null);
 
-  const normalizedInitialPage = Math.max(1, Math.min(initialPage, numPages || initialPage));
+  const clearRestoreTimers = useCallback(() => {
+    restoreTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    restoreTimersRef.current = [];
+  }, []);
 
   const scrollExactlyToPage = useCallback((page: number, behavior: ScrollBehavior = 'auto') => {
     const container = containerRef.current;
@@ -39,7 +41,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
 
     const containerRect = container.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const top = container.scrollTop + targetRect.top - containerRect.top - 16;
+    const top = container.scrollTop + targetRect.top - containerRect.top - 12;
 
     container.scrollTo({ top: Math.max(0, top), behavior });
     currentPageRef.current = page;
@@ -47,99 +49,114 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
     return true;
   }, []);
 
-  const completeInitialRestore = useCallback(() => {
-    if (restoreDoneRef.current || loading || numPages === 0) return;
+  const detectCurrentPage = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !numPages || !trackingReady) return;
 
-    const page = Math.max(1, Math.min(initialPage, numPages));
-    if (!scrollExactlyToPage(page)) return;
+    const containerRect = container.getBoundingClientRect();
+    const viewportCenter = containerRect.top + container.clientHeight / 2;
 
-    restoreDoneRef.current = true;
+    let bestPage = currentPageRef.current;
+    let bestDistance = Number.POSITIVE_INFINITY;
 
-    if (restoreHintTimerRef.current) {
-      window.clearTimeout(restoreHintTimerRef.current);
-      restoreHintTimerRef.current = null;
-    }
+    pageRefs.current.forEach((pageEl, index) => {
+      if (!pageEl) return;
+      const rect = pageEl.getBoundingClientRect();
 
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setTrackingReady(true));
+      // Prefer the page that actually contains the vertical center of the reading viewport.
+      if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
+        bestPage = index + 1;
+        bestDistance = 0;
+        return;
+      }
+
+      if (bestDistance === 0) return;
+
+      const pageCenter = rect.top + rect.height / 2;
+      const distance = Math.abs(pageCenter - viewportCenter);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPage = index + 1;
+      }
     });
-  }, [initialPage, loading, numPages, scrollExactlyToPage]);
 
-  const handlePageRenderSuccess = useCallback((pageNumber: number) => {
-    renderedPagesRef.current.add(pageNumber);
-
-    if (restoreDoneRef.current || loading || numPages === 0) return;
-
-    const target = Math.max(1, Math.min(initialPage, numPages));
-
-    for (let page = 1; page <= target; page += 1) {
-      if (!renderedPagesRef.current.has(page)) return;
+    if (bestPage !== currentPageRef.current) {
+      currentPageRef.current = bestPage;
+      setCurrentPage(bestPage);
+      onPageChange?.(bestPage, numPages);
     }
-
-    completeInitialRestore();
-  }, [completeInitialRestore, initialPage, loading, numPages]);
+  }, [numPages, onPageChange, trackingReady]);
 
   useEffect(() => {
     if (loading || numPages === 0) return;
 
+    clearRestoreTimers();
     setTrackingReady(false);
-    restoreDoneRef.current = false;
 
-    if (normalizedInitialPage === 1) {
-      window.requestAnimationFrame(() => completeInitialRestore());
-      return;
-    }
+    const target = Math.min(Math.max(1, initialPage), numPages);
 
-    restoreHintTimerRef.current = window.setTimeout(() => {
-      scrollExactlyToPage(normalizedInitialPage);
-    }, 1200);
-
-    return () => {
-      if (restoreHintTimerRef.current) {
-        window.clearTimeout(restoreHintTimerRef.current);
-        restoreHintTimerRef.current = null;
-      }
-    };
-  }, [completeInitialRestore, loading, normalizedInitialPage, numPages, scrollExactlyToPage]);
-
-  useEffect(() => {
-    if (!numPages || loading || !trackingReady) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-
-        const best = visible[0];
-        if (!best) return;
-
-        const pageIndex = Number(best.target.getAttribute('data-page-number'));
-        if (!pageIndex || currentPageRef.current === pageIndex) return;
-
-        currentPageRef.current = pageIndex;
-        setCurrentPage(pageIndex);
-        onPageChange?.(pageIndex, numPages);
-      },
-      {
-        root: containerRef.current,
-        threshold: [0.2, 0.35, 0.5, 0.7],
-        rootMargin: '-30% 0px -30% 0px',
-      }
-    );
-
-    pageRefs.current.forEach((ref) => {
-      if (ref) observer.observe(ref);
+    // The page wrappers exist immediately, but their heights can still change while
+    // PDF.js finishes rendering. Re-anchor a few times, then release normal tracking.
+    [0, 250, 700, 1400].forEach((delay) => {
+      const timer = window.setTimeout(() => {
+        scrollExactlyToPage(target);
+      }, delay);
+      restoreTimersRef.current.push(timer);
     });
 
-    return () => observer.disconnect();
-  }, [numPages, loading, trackingReady, onPageChange]);
+    const enableTimer = window.setTimeout(() => {
+      setTrackingReady(true);
+      window.requestAnimationFrame(detectCurrentPage);
+    }, 1750);
+    restoreTimersRef.current.push(enableTimer);
+
+    return clearRestoreTimers;
+  }, [clearRestoreTimers, detectCurrentPage, initialPage, loading, numPages, scrollExactlyToPage]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !trackingReady) return;
+
+    const onScroll = () => {
+      if (scrollFrameRef.current !== null) return;
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        detectCurrentPage();
+      });
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+
+    onScroll();
+
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, [detectCurrentPage, trackingReady]);
 
   useEffect(() => {
     if (!targetPage || loading || numPages === 0) return;
     const page = Math.min(Math.max(1, targetPage), numPages);
     scrollExactlyToPage(page, 'smooth');
-  }, [targetPage, loading, numPages, scrollExactlyToPage]);
+
+    const timer = window.setTimeout(() => {
+      detectCurrentPage();
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [detectCurrentPage, loading, numPages, scrollExactlyToPage, targetPage]);
+
+  useEffect(() => {
+    if (!trackingReady) return;
+    const timer = window.setTimeout(detectCurrentPage, 180);
+    return () => window.clearTimeout(timer);
+  }, [detectCurrentPage, scale, trackingReady]);
 
   const handleTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
@@ -172,8 +189,6 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
   };
 
   function onDocumentLoadSuccess({ numPages: total }: { numPages: number }) {
-    renderedPagesRef.current = new Set();
-    restoreDoneRef.current = false;
     setTrackingReady(false);
     setNumPages(total);
     setLoading(false);
@@ -187,7 +202,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900 relative overflow-hidden">
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden p-4 scroll-smooth"
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4"
         style={{ touchAction: 'pan-y' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -219,7 +234,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
                   key={`page_${pageNumber}`}
                   ref={(el) => (pageRefs.current[index] = el)}
                   data-page-number={pageNumber}
-                  className="relative shadow-lg transition-transform duration-75 ease-linear"
+                  className="relative shadow-lg"
                 >
                   <Page
                     pageNumber={pageNumber}
@@ -229,7 +244,6 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
                     className="bg-white"
                     width={Math.min(window.innerWidth * 0.95, 800)}
                     loading={<div className="h-[800px] w-full bg-white animate-pulse" />}
-                    onRenderSuccess={() => handlePageRenderSuccess(pageNumber)}
                   />
                   <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 bg-white/90 px-1 rounded border">
                     {pageNumber}
