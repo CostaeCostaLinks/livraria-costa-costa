@@ -53,6 +53,7 @@ export function PDFReader({
   const currentPageRef = useRef(initialPage);
   const restoreTimersRef = useRef<number[]>([]);
   const scrollFrameRef = useRef<number | null>(null);
+  const lastTargetPageRef = useRef<number | null>(null);
   const touchRef = useRef<{ dist: number } | null>(null);
 
   const clearRestoreTimers = useCallback(() => {
@@ -129,12 +130,11 @@ export function PDFReader({
 
     const enableTimer = window.setTimeout(() => {
       setTrackingReady(true);
-      window.requestAnimationFrame(detectCurrentPage);
     }, 1750);
     restoreTimersRef.current.push(enableTimer);
 
     return clearRestoreTimers;
-  }, [clearRestoreTimers, detectCurrentPage, initialPage, loading, numPages, scrollExactlyToPage]);
+  }, [clearRestoreTimers, initialPage, loading, numPages, scrollExactlyToPage]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -164,12 +164,23 @@ export function PDFReader({
 
   useEffect(() => {
     if (!targetPage || loading || numPages === 0) return;
+
     const page = Math.min(Math.max(1, targetPage), numPages);
+    if (lastTargetPageRef.current === page) return;
+
+    lastTargetPageRef.current = page;
     scrollExactlyToPage(page, 'smooth');
 
-    const timer = window.setTimeout(() => detectCurrentPage(), 500);
+    const timer = window.setTimeout(() => {
+      detectCurrentPage();
+    }, 500);
+
     return () => window.clearTimeout(timer);
   }, [detectCurrentPage, loading, numPages, scrollExactlyToPage, targetPage]);
+
+  useEffect(() => {
+    if (!targetPage) lastTargetPageRef.current = null;
+  }, [targetPage]);
 
   useEffect(() => {
     if (!trackingReady) return;
