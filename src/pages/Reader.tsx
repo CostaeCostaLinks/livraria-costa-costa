@@ -128,6 +128,16 @@ export default function ReaderPage() {
 
   const handleAddBookmark = async () => {
     if (!id || !currentPosition) return;
+
+    const alreadyExists = bookmarks.some((bookmark) => bookmark.position === currentPosition);
+    if (alreadyExists) {
+      toast({
+        title: 'Marcador já existe',
+        description: isEpub ? 'Este trecho já está nos seus marcadores.' : `A página ${currentPage} já está marcada.`,
+      });
+      return;
+    }
+
     try {
       await addBookmark.mutateAsync({
         bookId: id,
