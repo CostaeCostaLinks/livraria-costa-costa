@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { PDFReader, type PDFTextSelection } from '@/components/features/PDFReader';
-import { EPUBReader } from '@/components/features/EPUBReader';
+import { EPUBReader, type EPUBTextSelection } from '@/components/features/EPUBReader';
 import { useBook } from '@/hooks/useBooks';
 import { useReadingProgress, useSaveProgress } from '@/hooks/useReadingProgress';
 import {
@@ -55,7 +55,11 @@ export default function ReaderPage() {
   const [currentProgress, setCurrentProgress] = useState(0);
   const [readerJump, setReaderJump] = useState<string | number | null>(null);
 
-  const [selection, setSelection] = useState<PDFTextSelection | null>(null);
+  const [selection, setSelection] = useState<
+    | ({ format: 'pdf' } & PDFTextSelection)
+    | ({ format: 'epub' } & EPUBTextSelection)
+    | null
+  >(null);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>('yellow');
   const [highlightNote, setHighlightNote] = useState('');
@@ -185,11 +189,23 @@ export default function ReaderPage() {
     if (Number.isFinite(page) && page > 0) setReaderJump(page);
   };
 
-  const handlePdfTextSelection = (nextSelection: PDFTextSelection) => {
+  const openHighlightDialog = (
+    nextSelection:
+      | ({ format: 'pdf' } & PDFTextSelection)
+      | ({ format: 'epub' } & EPUBTextSelection)
+  ) => {
     setSelection(nextSelection);
     setHighlightColor('yellow');
     setHighlightNote('');
     setHighlightDialogOpen(true);
+  };
+
+  const handlePdfTextSelection = (nextSelection: PDFTextSelection) => {
+    openHighlightDialog({ format: 'pdf', ...nextSelection });
+  };
+
+  const handleEpubTextSelection = (nextSelection: EPUBTextSelection) => {
+    openHighlightDialog({ format: 'epub', ...nextSelection });
   };
 
   const handleSaveHighlight = async () => {
@@ -198,13 +214,13 @@ export default function ReaderPage() {
     try {
       await addHighlight.mutateAsync({
         bookId: id,
-        format: 'pdf',
+        format: selection.format,
         position: selection.position,
-        pageNumber: selection.pageNumber,
+        pageNumber: selection.format === 'pdf' ? selection.pageNumber : null,
         selectedText: selection.selectedText,
         color: highlightColor,
         note: highlightNote,
-        anchor: selection.anchor,
+        anchor: selection.format === 'pdf' ? selection.anchor : { cfi: selection.position },
       });
 
       setHighlightDialogOpen(false);
@@ -212,7 +228,10 @@ export default function ReaderPage() {
       setHighlightNote('');
       toast({
         title: 'Destaque salvo',
-        description: `Trecho destacado na página ${selection.pageNumber}.`,
+        description:
+          selection.format === 'pdf'
+            ? `Trecho destacado na página ${selection.pageNumber}.`
+            : 'Trecho destacado no EPUB.',
       });
     } catch {
       toast({ title: 'Não foi possível salvar o destaque', variant: 'destructive' });
@@ -375,6 +394,8 @@ export default function ReaderPage() {
             initialLocation={initialEpubLocation}
             locationOverride={typeof readerJump === 'string' ? readerJump : undefined}
             onLocationChange={handleEpubLocationChange}
+            highlights={highlights}
+            onTextSelection={handleEpubTextSelection}
           />
         ) : (
           <PDFReader
@@ -400,7 +421,9 @@ export default function ReaderPage() {
           {selection && (
             <div className="space-y-4">
               <div className="rounded-lg bg-muted/60 p-3">
-                <p className="text-xs text-muted-foreground mb-1">Página {selection.pageNumber}</p>
+                <p className="text-xs text-muted-foreground mb-1">
+                  {selection.format === 'pdf' ? `Página ${selection.pageNumber}` : 'EPUB'}
+                </p>
                 <p className="text-sm leading-relaxed">“{selection.selectedText}”</p>
               </div>
 
