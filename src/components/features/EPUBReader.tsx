@@ -58,15 +58,11 @@ export function EPUBReader({
     if (!rend?.themes) return;
 
     try {
-      rend.themes.default({
-        body: {
-          color: dark ? '#f8fafc' : '#111827',
-          background: dark ? '#0b1220' : '#ffffff',
-        },
-        '::selection': {
-          background: '#fde68a',
-        },
-      });
+      // Usa overrides com prioridade para conseguir desfazer o modo escuro
+      // mesmo quando o EPUB traz estilos próprios.
+      rend.themes.override('color', dark ? '#f8fafc' : '#111827', true);
+      rend.themes.override('background', dark ? '#0b1220' : '#ffffff', true);
+      rend.themes.override('background-color', dark ? '#0b1220' : '#ffffff', true);
       rend.themes.fontSize(`${size}%`);
     } catch {
       // Alguns EPUBs limitam customizações; a leitura continua normalmente.
@@ -124,6 +120,39 @@ export function EPUBReader({
     syncHighlights();
   }, [rendition, syncHighlights]);
 
+  const installSelectionCapture = useCallback((contents: any) => {
+    if (!contents?.document || contents.__costaSelectionInstalled) return;
+    contents.__costaSelectionInstalled = true;
+
+    const capture = () => {
+      window.setTimeout(() => {
+        try {
+          const selection = contents.window?.getSelection?.();
+          if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+
+          const selectedText = selection.toString().trim();
+          if (!selectedText) return;
+
+          const range = selection.getRangeAt(0);
+          const cfiRange = contents.cfiFromRange?.(range);
+          if (!cfiRange) return;
+
+          onTextSelectionRef.current?.({
+            selectedText,
+            position: cfiRange,
+          });
+
+          selection.removeAllRanges();
+        } catch {
+          // Seleção inválida não deve interromper o leitor.
+        }
+      }, 0);
+    };
+
+    contents.document.addEventListener('mouseup', capture);
+    contents.document.addEventListener('touchend', capture);
+  }, []);
+
   const handleLocationChange = (loc: string) => {
     setLocation(loc);
     let progress: number | undefined;
@@ -155,52 +184,50 @@ export function EPUBReader({
 
   const handleRendition = useCallback(
     (rend: any) => {
-      // Limpa o listener anterior antes de trocar a rendition.
-      const previous = renditionRef.current;
-      if (previous && previous !== rend) {
-        try {
-          previous.off('selected', previous.__costaSelectionHandler);
-        } catch {
-          // noop
-        }
-      }
-
       renditionRef.current = rend;
       setRendition(rend);
       appliedHighlightsRef.current = new Map();
 
       applyReaderTheme(rend, readerDark, fontSize);
 
-      const handleSelected = (cfiRange: string, contents: any) => {
-        if (!cfiRange) return;
+      // Instala captura nativa de seleção dentro de cada documento do EPUB.
+      // Isso independe de scripts embutidos no arquivo e mantém o sandbox seguro.
+      try {
+        rend.hooks.content.register((contents: any) => {
+          installSelectionCapture(contents);
+        });
 
+        const visibleContents = rend.getContents?.() || [];
+        visibleContents.forEach((contents: any) => installSelectionCapture(contents));
+      } catch {
+        // noop
+      }
+
+      // Mantém também o evento oficial como fallback.
+      const handleSelected = (cfiRange: string, contents: any) => {
         try {
           const selectedText =
-            rend.getRange?.(cfiRange)?.toString?.().trim?.() ||
             contents?.window?.getSelection?.()?.toString?.().trim?.() ||
+            rend.getRange?.(cfiRange)?.toString?.().trim?.() ||
             '';
 
-          if (!selectedText) return;
+          if (!selectedText || !cfiRange) return;
 
           onTextSelectionRef.current?.({
             selectedText,
             position: cfiRange,
           });
-
           contents?.window?.getSelection?.()?.removeAllRanges?.();
         } catch {
-          // Seleção inválida não deve interromper o leitor.
+          // noop
         }
       };
 
-      // Guardamos a referência no próprio objeto para remover corretamente.
-      rend.__costaSelectionHandler = handleSelected;
       try {
-        rend.off('selected', handleSelected);
+        rend.on('selected', handleSelected);
       } catch {
         // noop
       }
-      rend.on('selected', handleSelected);
 
       try {
         Promise.resolve(rend.book.locations.generate(1600))
@@ -216,20 +243,8 @@ export function EPUBReader({
 
       window.setTimeout(syncHighlights, 50);
     },
-    [applyReaderTheme, fontSize, readerDark, syncHighlights]
+    [applyReaderTheme, fontSize, installSelectionCapture, readerDark, syncHighlights]
   );
-
-  useEffect(() => {
-    return () => {
-      const rend = renditionRef.current;
-      if (!rend) return;
-      try {
-        if (rend.__costaSelectionHandler) rend.off('selected', rend.__costaSelectionHandler);
-      } catch {
-        // noop
-      }
-    };
-  }, []);
 
   return (
     <div className="epub-container relative h-full">
@@ -265,6 +280,7 @@ export function EPUBReader({
           flow: 'paginated',
           manager: 'default',
           spread: 'auto',
+          allowScriptedContent: false,
         }}
       />
     </div>
