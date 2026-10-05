@@ -39,44 +39,54 @@ export function EPUBReader({
   const [fontSize, setFontSize] = useState(100);
   const [rendition, setRendition] = useState<any>(null);
   const { theme } = useTheme();
+  const [readerDark, setReaderDark] = useState(theme === 'dark');
+
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
   const appliedHighlightsRef = useRef<Map<string, string>>(new Map());
+  const onTextSelectionRef = useRef(onTextSelection);
 
   useEffect(() => {
-    renditionRef.current = rendition;
-  }, [rendition]);
+    onTextSelectionRef.current = onTextSelection;
+  }, [onTextSelection]);
 
   useEffect(() => {
     if (locationOverride) setLocation(locationOverride);
   }, [locationOverride]);
 
-  useEffect(() => {
-    if (!renditionRef.current) return;
-    const rend = renditionRef.current;
-    const themes = rend?.themes;
-    if (!themes) return;
+  const applyReaderTheme = useCallback((rend: any, dark: boolean, size: number) => {
+    if (!rend?.themes) return;
 
     try {
-      if (theme === 'dark') {
-        themes.override('color', '#ffffff');
-        themes.override('background', '#0b1220');
-      } else {
-        themes.override('color', '#111827');
-        themes.override('background', '#ffffff');
-      }
-      themes.fontSize(`${fontSize}%`);
+      rend.themes.default({
+        body: {
+          color: dark ? '#f8fafc' : '#111827',
+          background: dark ? '#0b1220' : '#ffffff',
+        },
+        '::selection': {
+          background: '#fde68a',
+        },
+      });
+      rend.themes.fontSize(`${size}%`);
     } catch {
-      // Alguns EPUBs limitam customizações de estilo; a leitura continua normalmente.
+      // Alguns EPUBs limitam customizações; a leitura continua normalmente.
     }
-  }, [theme, fontSize, rendition]);
+  }, []);
+
+  useEffect(() => {
+    if (!rendition) return;
+    applyReaderTheme(rendition, readerDark, fontSize);
+  }, [applyReaderTheme, fontSize, readerDark, rendition]);
 
   const syncHighlights = useCallback(() => {
     const rend = renditionRef.current;
     if (!rend?.annotations) return;
 
     const epubHighlights = highlights.filter(
-      (highlight) => highlight.format === 'epub' && typeof highlight.position === 'string' && highlight.position.length > 0
+      (highlight) =>
+        highlight.format === 'epub' &&
+        typeof highlight.position === 'string' &&
+        highlight.position.length > 0
     );
 
     const desiredIds = new Set(epubHighlights.map((highlight) => highlight.id));
@@ -95,7 +105,8 @@ export function EPUBReader({
       if (appliedHighlightsRef.current.has(highlight.id)) return;
 
       try {
-        rend.annotations.highlight(
+        rend.annotations.add(
+          'highlight',
           highlight.position,
           { highlightId: highlight.id },
           undefined,
@@ -112,54 +123,6 @@ export function EPUBReader({
   useEffect(() => {
     syncHighlights();
   }, [rendition, syncHighlights]);
-
-  useEffect(() => {
-    const rend = renditionRef.current;
-    if (!rend || !onTextSelection) return;
-
-    const handleSelected = (cfiRange: string, contents: any) => {
-      try {
-        const selection = contents?.window?.getSelection?.();
-        const selectedText = selection?.toString?.().trim?.() || '';
-        if (!selectedText || !cfiRange) return;
-
-        onTextSelection({
-          selectedText,
-          position: cfiRange,
-        });
-
-        selection?.removeAllRanges?.();
-      } catch {
-        // A seleção pode vir de um conteúdo isolado do EPUB. Falhas aqui não quebram o leitor.
-      }
-    };
-
-    rend.on('selected', handleSelected);
-    return () => {
-      try {
-        rend.off('selected', handleSelected);
-      } catch {
-        // noop
-      }
-    };
-  }, [onTextSelection, rendition]);
-
-  const toggleTheme = () => {
-    if (!renditionRef.current) return;
-    const themes = renditionRef.current?.themes;
-    if (!themes) return;
-    try {
-      if (theme === 'light') {
-        themes.override('color', '#ffffff');
-        themes.override('background', '#0b1220');
-      } else {
-        themes.override('color', '#111827');
-        themes.override('background', '#ffffff');
-      }
-    } catch {
-      // Mantém o leitor funcional mesmo se o EPUB bloquear overrides.
-    }
-  };
 
   const handleLocationChange = (loc: string) => {
     setLocation(loc);
@@ -181,12 +144,92 @@ export function EPUBReader({
   const handleFontSizeChange = (value: number[]) => {
     const newSize = value[0];
     setFontSize(newSize);
-    try {
-      renditionRef.current?.themes?.fontSize(`${newSize}%`);
-    } catch {
-      // noop
-    }
+    applyReaderTheme(renditionRef.current, readerDark, newSize);
   };
+
+  const handleToggleTheme = () => {
+    const nextDark = !readerDark;
+    setReaderDark(nextDark);
+    applyReaderTheme(renditionRef.current, nextDark, fontSize);
+  };
+
+  const handleRendition = useCallback(
+    (rend: any) => {
+      // Limpa o listener anterior antes de trocar a rendition.
+      const previous = renditionRef.current;
+      if (previous && previous !== rend) {
+        try {
+          previous.off('selected', previous.__costaSelectionHandler);
+        } catch {
+          // noop
+        }
+      }
+
+      renditionRef.current = rend;
+      setRendition(rend);
+      appliedHighlightsRef.current = new Map();
+
+      applyReaderTheme(rend, readerDark, fontSize);
+
+      const handleSelected = (cfiRange: string, contents: any) => {
+        if (!cfiRange) return;
+
+        try {
+          const selectedText =
+            rend.getRange?.(cfiRange)?.toString?.().trim?.() ||
+            contents?.window?.getSelection?.()?.toString?.().trim?.() ||
+            '';
+
+          if (!selectedText) return;
+
+          onTextSelectionRef.current?.({
+            selectedText,
+            position: cfiRange,
+          });
+
+          contents?.window?.getSelection?.()?.removeAllRanges?.();
+        } catch {
+          // Seleção inválida não deve interromper o leitor.
+        }
+      };
+
+      // Guardamos a referência no próprio objeto para remover corretamente.
+      rend.__costaSelectionHandler = handleSelected;
+      try {
+        rend.off('selected', handleSelected);
+      } catch {
+        // noop
+      }
+      rend.on('selected', handleSelected);
+
+      try {
+        Promise.resolve(rend.book.locations.generate(1600))
+          .then(() => {
+            locationsReadyRef.current = true;
+          })
+          .catch(() => {
+            locationsReadyRef.current = false;
+          });
+      } catch {
+        locationsReadyRef.current = false;
+      }
+
+      window.setTimeout(syncHighlights, 50);
+    },
+    [applyReaderTheme, fontSize, readerDark, syncHighlights]
+  );
+
+  useEffect(() => {
+    return () => {
+      const rend = renditionRef.current;
+      if (!rend) return;
+      try {
+        if (rend.__costaSelectionHandler) rend.off('selected', rend.__costaSelectionHandler);
+      } catch {
+        // noop
+      }
+    };
+  }, []);
 
   return (
     <div className="epub-container relative h-full">
@@ -199,11 +242,11 @@ export function EPUBReader({
             <span className="text-sm text-muted-foreground">{fontSize}%</span>
           </div>
           <Slider value={[fontSize]} onValueChange={handleFontSizeChange} min={80} max={150} step={10} />
-          <Button variant="outline" size="sm" onClick={toggleTheme} className="w-full">
-            {theme === 'light' ? (
-              <><Moon className="h-4 w-4 mr-2" />Modo Escuro</>
-            ) : (
+          <Button variant="outline" size="sm" onClick={handleToggleTheme} className="w-full">
+            {readerDark ? (
               <><Sun className="h-4 w-4 mr-2" />Modo Claro</>
+            ) : (
+              <><Moon className="h-4 w-4 mr-2" />Modo Escuro</>
             )}
           </Button>
         </div>
@@ -213,22 +256,16 @@ export function EPUBReader({
         url={url}
         location={location}
         locationChanged={handleLocationChange}
-        getRendition={(rend) => {
-          setRendition(rend);
-          renditionRef.current = rend;
-          appliedHighlightsRef.current = new Map();
-
-          try {
-            Promise.resolve(rend.book.locations.generate(1600))
-              .then(() => { locationsReadyRef.current = true; })
-              .catch(() => { locationsReadyRef.current = false; });
-          } catch {
-            locationsReadyRef.current = false;
-          }
-
-          window.setTimeout(syncHighlights, 0);
+        getRendition={handleRendition}
+        swipeable={false}
+        epubInitOptions={{
+          openAs: 'epub',
         }}
-        epubOptions={{ flow: 'paginated', manager: 'continuous' }}
+        epubOptions={{
+          flow: 'paginated',
+          manager: 'default',
+          spread: 'auto',
+        }}
       />
     </div>
   );
