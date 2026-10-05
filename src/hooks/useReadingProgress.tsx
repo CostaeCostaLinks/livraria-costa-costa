@@ -9,13 +9,8 @@ export function useReadingProgress(bookId?: string) {
     queryKey: ['reading-progress', bookId],
     queryFn: async () => {
       if (!user || !bookId) return null;
-      
       if (isDemoMode) return { progress: 0, last_position: null };
 
-      // --- CORREÇÃO DO LOOPING ---
-      // Trocamos .single() por .maybeSingle()
-      // .single() -> Gera erro 406 se não encontrar nada (causa o loop)
-      // .maybeSingle() -> Retorna null se não encontrar nada (correto)
       const { data, error } = await supabase
         .from('reading_progress')
         .select('*')
@@ -24,12 +19,10 @@ export function useReadingProgress(bookId?: string) {
         .maybeSingle();
 
       if (error) throw error;
-      
-      // Se não encontrar progresso, retorna um objeto padrão zerado
       return data || { progress: 0, last_position: null };
     },
     enabled: !!user && !!bookId,
-    retry: false, // Importante: Não tentar novamente se der erro, para evitar travamentos
+    retry: false,
   });
 }
 
@@ -40,7 +33,6 @@ export function useMyLibrary() {
     queryKey: ['my-library'],
     queryFn: async () => {
       if (!user) return [];
-
       if (isDemoMode) return [];
 
       const { data, error } = await supabase
@@ -53,13 +45,15 @@ export function useMyLibrary() {
 
       if (error) throw error;
       
-      // Filtra casos onde o livro pode ter sido deletado mas o progresso ficou
       return data
-        .filter((item: any) => item.book !== null) 
+        .filter((item: any) => item.book !== null)
         .map((item: any) => ({
           ...item.book,
           progress: item.progress,
-        }));
+          last_position: item.last_position,
+          last_read_at: item.updated_at,
+        }))
+        .sort((a: any, b: any) => new Date(b.last_read_at || 0).getTime() - new Date(a.last_read_at || 0).getTime());
     },
     enabled: !!user,
   });
@@ -87,7 +81,6 @@ export function useSaveProgress() {
       if (error) throw error;
     },
     onSuccess: (_, variables) => {
-      // Atualiza o cache localmente para refletir a mudança na hora
       queryClient.invalidateQueries({ queryKey: ['reading-progress', variables.bookId] });
       queryClient.invalidateQueries({ queryKey: ['my-library'] });
     },
