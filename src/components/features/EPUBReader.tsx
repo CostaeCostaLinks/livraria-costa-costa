@@ -1,24 +1,47 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ReactReader } from 'react-reader';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Type, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
+
+export interface EPUBTextSelection {
+  selectedText: string;
+  position: string;
+}
 
 interface EPUBReaderProps {
   url: string;
   initialLocation?: string;
   locationOverride?: string;
   onLocationChange?: (location: string, progress?: number) => void;
+  highlights?: ReadingHighlight[];
+  onTextSelection?: (selection: EPUBTextSelection) => void;
 }
 
-export function EPUBReader({ url, initialLocation, locationOverride, onLocationChange }: EPUBReaderProps) {
+const epubHighlightStyles: Record<string, Record<string, string>> = {
+  yellow: { fill: '#fde047', 'fill-opacity': '0.45', 'mix-blend-mode': 'multiply' },
+  green: { fill: '#86efac', 'fill-opacity': '0.42', 'mix-blend-mode': 'multiply' },
+  blue: { fill: '#93c5fd', 'fill-opacity': '0.40', 'mix-blend-mode': 'multiply' },
+  pink: { fill: '#f9a8d4', 'fill-opacity': '0.40', 'mix-blend-mode': 'multiply' },
+};
+
+export function EPUBReader({
+  url,
+  initialLocation,
+  locationOverride,
+  onLocationChange,
+  highlights = [],
+  onTextSelection,
+}: EPUBReaderProps) {
   const [location, setLocation] = useState<string | number>(initialLocation || 0);
   const [fontSize, setFontSize] = useState(100);
   const [rendition, setRendition] = useState<any>(null);
   const { theme } = useTheme();
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
+  const appliedHighlightsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     renditionRef.current = rendition;
@@ -47,6 +70,79 @@ export function EPUBReader({ url, initialLocation, locationOverride, onLocationC
       // Alguns EPUBs limitam customizações de estilo; a leitura continua normalmente.
     }
   }, [theme, fontSize, rendition]);
+
+  const syncHighlights = useCallback(() => {
+    const rend = renditionRef.current;
+    if (!rend?.annotations) return;
+
+    const epubHighlights = highlights.filter(
+      (highlight) => highlight.format === 'epub' && typeof highlight.position === 'string' && highlight.position.length > 0
+    );
+
+    const desiredIds = new Set(epubHighlights.map((highlight) => highlight.id));
+
+    appliedHighlightsRef.current.forEach((cfiRange, id) => {
+      if (desiredIds.has(id)) return;
+      try {
+        rend.annotations.remove(cfiRange, 'highlight');
+      } catch {
+        // Ignora remoção já aplicada pelo próprio EPUB.js.
+      }
+      appliedHighlightsRef.current.delete(id);
+    });
+
+    epubHighlights.forEach((highlight) => {
+      if (appliedHighlightsRef.current.has(highlight.id)) return;
+
+      try {
+        rend.annotations.highlight(
+          highlight.position,
+          { highlightId: highlight.id },
+          undefined,
+          `reader-highlight-${highlight.color}`,
+          epubHighlightStyles[highlight.color] || epubHighlightStyles.yellow
+        );
+        appliedHighlightsRef.current.set(highlight.id, highlight.position);
+      } catch {
+        // Um CFI inválido não deve interromper a leitura.
+      }
+    });
+  }, [highlights]);
+
+  useEffect(() => {
+    syncHighlights();
+  }, [rendition, syncHighlights]);
+
+  useEffect(() => {
+    const rend = renditionRef.current;
+    if (!rend || !onTextSelection) return;
+
+    const handleSelected = (cfiRange: string, contents: any) => {
+      try {
+        const selection = contents?.window?.getSelection?.();
+        const selectedText = selection?.toString?.().trim?.() || '';
+        if (!selectedText || !cfiRange) return;
+
+        onTextSelection({
+          selectedText,
+          position: cfiRange,
+        });
+
+        selection?.removeAllRanges?.();
+      } catch {
+        // A seleção pode vir de um conteúdo isolado do EPUB. Falhas aqui não quebram o leitor.
+      }
+    };
+
+    rend.on('selected', handleSelected);
+    return () => {
+      try {
+        rend.off('selected', handleSelected);
+      } catch {
+        // noop
+      }
+    };
+  }, [onTextSelection, rendition]);
 
   const toggleTheme = () => {
     if (!renditionRef.current) return;
@@ -120,6 +216,8 @@ export function EPUBReader({ url, initialLocation, locationOverride, onLocationC
         getRendition={(rend) => {
           setRendition(rend);
           renditionRef.current = rend;
+          appliedHighlightsRef.current = new Map();
+
           try {
             Promise.resolve(rend.book.locations.generate(1600))
               .then(() => { locationsReadyRef.current = true; })
@@ -127,6 +225,8 @@ export function EPUBReader({ url, initialLocation, locationOverride, onLocationC
           } catch {
             locationsReadyRef.current = false;
           }
+
+          window.setTimeout(syncHighlights, 0);
         }}
         epubOptions={{ flow: 'paginated', manager: 'continuous' }}
       />
