@@ -2,20 +2,46 @@ import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Button } from '@/components/ui/button';
 import { Loader2, ZoomIn, ZoomOut, ArrowUpToLine } from 'lucide-react';
+import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+export interface PDFTextSelection {
+  selectedText: string;
+  pageNumber: number;
+  position: string;
+  anchor: {
+    rects: Array<{ x: number; y: number; w: number; h: number }>;
+  };
+}
+
 interface PDFReaderProps {
   url: string;
   initialPage?: number;
   onPageChange?: (page: number, total: number) => void;
   targetPage?: number;
+  highlights?: ReadingHighlight[];
+  onTextSelection?: (selection: PDFTextSelection) => void;
 }
 
-export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PDFReaderProps) {
+const highlightColors: Record<string, string> = {
+  yellow: 'rgba(250, 204, 21, 0.42)',
+  green: 'rgba(74, 222, 128, 0.38)',
+  blue: 'rgba(96, 165, 250, 0.36)',
+  pink: 'rgba(244, 114, 182, 0.36)',
+};
+
+export function PDFReader({
+  url,
+  initialPage = 1,
+  onPageChange,
+  targetPage,
+  highlights = [],
+  onTextSelection,
+}: PDFReaderProps) {
   const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -63,7 +89,6 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
       if (!pageEl) return;
       const rect = pageEl.getBoundingClientRect();
 
-      // Prefer the page that actually contains the vertical center of the reading viewport.
       if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
         bestPage = index + 1;
         bestDistance = 0;
@@ -95,8 +120,6 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
 
     const target = Math.min(Math.max(1, initialPage), numPages);
 
-    // The page wrappers exist immediately, but their heights can still change while
-    // PDF.js finishes rendering. Re-anchor a few times, then release normal tracking.
     [0, 250, 700, 1400].forEach((delay) => {
       const timer = window.setTimeout(() => {
         scrollExactlyToPage(target);
@@ -127,7 +150,6 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
 
     container.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
-
     onScroll();
 
     return () => {
@@ -145,10 +167,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
     const page = Math.min(Math.max(1, targetPage), numPages);
     scrollExactlyToPage(page, 'smooth');
 
-    const timer = window.setTimeout(() => {
-      detectCurrentPage();
-    }, 500);
-
+    const timer = window.setTimeout(() => detectCurrentPage(), 500);
     return () => window.clearTimeout(timer);
   }, [detectCurrentPage, loading, numPages, scrollExactlyToPage, targetPage]);
 
@@ -157,6 +176,48 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
     const timer = window.setTimeout(detectCurrentPage, 180);
     return () => window.clearTimeout(timer);
   }, [detectCurrentPage, scale, trackingReady]);
+
+  const handleTextSelection = useCallback(() => {
+    if (!onTextSelection) return;
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+
+      const selectedText = selection.toString().trim();
+      if (!selectedText) return;
+
+      const range = selection.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+      const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+      const pageElement = element?.closest('[data-page-number]') as HTMLElement | null;
+      if (!pageElement || !containerRef.current?.contains(pageElement)) return;
+
+      const pageNumber = Number(pageElement.dataset.pageNumber);
+      if (!pageNumber) return;
+
+      const pageRect = pageElement.getBoundingClientRect();
+      const rects = Array.from(range.getClientRects())
+        .filter((rect) => rect.width > 1 && rect.height > 1)
+        .map((rect) => ({
+          x: (rect.left - pageRect.left) / pageRect.width,
+          y: (rect.top - pageRect.top) / pageRect.height,
+          w: rect.width / pageRect.width,
+          h: rect.height / pageRect.height,
+        }))
+        .filter((rect) => rect.x >= -0.02 && rect.y >= -0.02 && rect.x <= 1.02 && rect.y <= 1.02);
+
+      if (!rects.length) return;
+
+      onTextSelection({
+        selectedText,
+        pageNumber,
+        position: `page:${pageNumber}`,
+        anchor: { rects },
+      });
+
+      selection.removeAllRanges();
+    }, 0);
+  }, [onTextSelection]);
 
   const handleTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
@@ -177,8 +238,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
       const delta = dist - touchRef.current.dist;
 
       if (Math.abs(delta) > 20) {
-        const zoomFactor = delta > 0 ? 0.05 : -0.05;
-        setScale((s) => Math.min(Math.max(0.5, s + zoomFactor), 3));
+        setScale((s) => Math.min(Math.max(0.5, s + (delta > 0 ? 0.05 : -0.05)), 3));
         touchRef.current = { dist };
       }
     }
@@ -194,16 +254,13 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
     setLoading(false);
   }
 
-  const scrollToTop = () => {
-    containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900 relative overflow-hidden">
       <div
         ref={containerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden p-4"
         style={{ touchAction: 'pan-y' }}
+        onMouseUp={handleTextSelection}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -229,6 +286,10 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
           >
             {Array.from({ length: numPages }, (_, index) => {
               const pageNumber = index + 1;
+              const pageHighlights = highlights.filter(
+                (highlight) => highlight.format === 'pdf' && highlight.page_number === pageNumber
+              );
+
               return (
                 <div
                   key={`page_${pageNumber}`}
@@ -245,7 +306,30 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
                     width={Math.min(window.innerWidth * 0.95, 800)}
                     loading={<div className="h-[800px] w-full bg-white animate-pulse" />}
                   />
-                  <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 bg-white/90 px-1 rounded border">
+
+                  <div className="absolute inset-0 pointer-events-none z-20" aria-hidden="true">
+                    {pageHighlights.flatMap((highlight) => {
+                      const rects = Array.isArray((highlight.anchor as { rects?: unknown[] })?.rects)
+                        ? ((highlight.anchor as { rects: Array<{ x: number; y: number; w: number; h: number }> }).rects)
+                        : [];
+                      return rects.map((rect, rectIndex) => (
+                        <span
+                          key={`${highlight.id}-${rectIndex}`}
+                          className="absolute rounded-[2px]"
+                          style={{
+                            left: `${rect.x * 100}%`,
+                            top: `${rect.y * 100}%`,
+                            width: `${rect.w * 100}%`,
+                            height: `${rect.h * 100}%`,
+                            background: highlightColors[highlight.color] || highlightColors.yellow,
+                            mixBlendMode: 'multiply',
+                          }}
+                        />
+                      ));
+                    })}
+                  </div>
+
+                  <div className="absolute bottom-2 right-2 z-30 text-[10px] text-gray-400 bg-white/90 px-1 rounded border">
                     {pageNumber}
                   </div>
                 </div>
@@ -259,7 +343,7 @@ export function PDFReader({ url, initialPage = 1, onPageChange, targetPage }: PD
         variant="secondary"
         size="icon"
         className="absolute bottom-20 right-4 rounded-full shadow-xl opacity-90 hover:opacity-100 z-30"
-        onClick={scrollToTop}
+        onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
         aria-label="Voltar ao início"
       >
         <ArrowUpToLine className="h-5 w-5" />
