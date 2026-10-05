@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ReactReader } from 'react-reader';
+import { EpubView } from 'react-reader';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Type, Moon, Sun } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Moon, Sun, Type } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 
@@ -27,6 +27,19 @@ const epubHighlightStyles: Record<string, Record<string, string>> = {
   pink: { fill: '#f9a8d4', 'fill-opacity': '0.40', 'mix-blend-mode': 'multiply' },
 };
 
+const viewStyles = {
+  viewHolder: {
+    position: 'relative' as const,
+    height: '100%',
+    width: '100%',
+    overflow: 'hidden',
+  },
+  view: {
+    height: '100%',
+    width: '100%',
+  },
+};
+
 export function EPUBReader({
   url,
   initialLocation,
@@ -44,11 +57,6 @@ export function EPUBReader({
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
   const appliedHighlightsRef = useRef<Map<string, string>>(new Map());
-  const onTextSelectionRef = useRef(onTextSelection);
-
-  useEffect(() => {
-    onTextSelectionRef.current = onTextSelection;
-  }, [onTextSelection]);
 
   useEffect(() => {
     if (locationOverride) setLocation(locationOverride);
@@ -58,11 +66,29 @@ export function EPUBReader({
     if (!rend?.themes) return;
 
     try {
-      // Usa overrides com prioridade para conseguir desfazer o modo escuro
-      // mesmo quando o EPUB traz estilos próprios.
-      rend.themes.override('color', dark ? '#f8fafc' : '#111827', true);
-      rend.themes.override('background', dark ? '#0b1220' : '#ffffff', true);
-      rend.themes.override('background-color', dark ? '#0b1220' : '#ffffff', true);
+      rend.themes.register('costa-light', {
+        body: {
+          color: '#111827 !important',
+          background: '#ffffff !important',
+          'background-color': '#ffffff !important',
+        },
+        '::selection': {
+          background: 'rgba(253, 224, 71, 0.55)',
+        },
+      });
+
+      rend.themes.register('costa-dark', {
+        body: {
+          color: '#f8fafc !important',
+          background: '#0b1220 !important',
+          'background-color': '#0b1220 !important',
+        },
+        '::selection': {
+          background: 'rgba(253, 224, 71, 0.55)',
+        },
+      });
+
+      rend.themes.select(dark ? 'costa-dark' : 'costa-light');
       rend.themes.fontSize(`${size}%`);
     } catch {
       // Alguns EPUBs limitam customizações; a leitura continua normalmente.
@@ -92,7 +118,7 @@ export function EPUBReader({
       try {
         rend.annotations.remove(cfiRange, 'highlight');
       } catch {
-        // Ignora remoção já aplicada pelo próprio EPUB.js.
+        // noop
       }
       appliedHighlightsRef.current.delete(id);
     });
@@ -120,39 +146,6 @@ export function EPUBReader({
     syncHighlights();
   }, [rendition, syncHighlights]);
 
-  const installSelectionCapture = useCallback((contents: any) => {
-    if (!contents?.document || contents.__costaSelectionInstalled) return;
-    contents.__costaSelectionInstalled = true;
-
-    const capture = () => {
-      window.setTimeout(() => {
-        try {
-          const selection = contents.window?.getSelection?.();
-          if (!selection || selection.isCollapsed || !selection.rangeCount) return;
-
-          const selectedText = selection.toString().trim();
-          if (!selectedText) return;
-
-          const range = selection.getRangeAt(0);
-          const cfiRange = contents.cfiFromRange?.(range);
-          if (!cfiRange) return;
-
-          onTextSelectionRef.current?.({
-            selectedText,
-            position: cfiRange,
-          });
-
-          selection.removeAllRanges();
-        } catch {
-          // Seleção inválida não deve interromper o leitor.
-        }
-      }, 0);
-    };
-
-    contents.document.addEventListener('mouseup', capture);
-    contents.document.addEventListener('touchend', capture);
-  }, []);
-
   const handleLocationChange = (loc: string) => {
     setLocation(loc);
     let progress: number | undefined;
@@ -161,7 +154,9 @@ export function EPUBReader({
       const bookLocations = renditionRef.current?.book?.locations;
       if (locationsReadyRef.current && bookLocations) {
         const fraction = bookLocations.percentageFromCfi(loc);
-        if (Number.isFinite(fraction)) progress = Math.min(100, Math.max(0, fraction * 100));
+        if (Number.isFinite(fraction)) {
+          progress = Math.min(100, Math.max(0, fraction * 100));
+        }
       }
     } catch {
       // CFI inválido ou locations ainda não geradas: salvamos a posição mesmo sem percentual.
@@ -182,6 +177,31 @@ export function EPUBReader({
     applyReaderTheme(renditionRef.current, nextDark, fontSize);
   };
 
+  const handleTextSelected = useCallback(
+    (cfiRange: string, contents: any) => {
+      if (!cfiRange || !onTextSelection) return;
+
+      try {
+        const selectedText =
+          contents?.window?.getSelection?.()?.toString?.().trim?.() ||
+          renditionRef.current?.getRange?.(cfiRange)?.toString?.().trim?.() ||
+          '';
+
+        if (!selectedText) return;
+
+        onTextSelection({
+          selectedText,
+          position: cfiRange,
+        });
+
+        contents?.window?.getSelection?.()?.removeAllRanges?.();
+      } catch {
+        // Seleção inválida não deve interromper o leitor.
+      }
+    },
+    [onTextSelection]
+  );
+
   const handleRendition = useCallback(
     (rend: any) => {
       renditionRef.current = rend;
@@ -189,45 +209,6 @@ export function EPUBReader({
       appliedHighlightsRef.current = new Map();
 
       applyReaderTheme(rend, readerDark, fontSize);
-
-      // Instala captura nativa de seleção dentro de cada documento do EPUB.
-      // Isso independe de scripts embutidos no arquivo e mantém o sandbox seguro.
-      try {
-        rend.hooks.content.register((contents: any) => {
-          installSelectionCapture(contents);
-        });
-
-        const visibleContents = rend.getContents?.() || [];
-        visibleContents.forEach((contents: any) => installSelectionCapture(contents));
-      } catch {
-        // noop
-      }
-
-      // Mantém também o evento oficial como fallback.
-      const handleSelected = (cfiRange: string, contents: any) => {
-        try {
-          const selectedText =
-            contents?.window?.getSelection?.()?.toString?.().trim?.() ||
-            rend.getRange?.(cfiRange)?.toString?.().trim?.() ||
-            '';
-
-          if (!selectedText || !cfiRange) return;
-
-          onTextSelectionRef.current?.({
-            selectedText,
-            position: cfiRange,
-          });
-          contents?.window?.getSelection?.()?.removeAllRanges?.();
-        } catch {
-          // noop
-        }
-      };
-
-      try {
-        rend.on('selected', handleSelected);
-      } catch {
-        // noop
-      }
 
       try {
         Promise.resolve(rend.book.locations.generate(1600))
@@ -243,12 +224,12 @@ export function EPUBReader({
 
       window.setTimeout(syncHighlights, 50);
     },
-    [applyReaderTheme, fontSize, installSelectionCapture, readerDark, syncHighlights]
+    [applyReaderTheme, fontSize, readerDark, syncHighlights]
   );
 
   return (
-    <div className="epub-container relative h-full">
-      <div className="absolute top-4 right-4 z-10 bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg max-w-[210px]">
+    <div className={`relative h-full overflow-hidden ${readerDark ? 'bg-[#0b1220]' : 'bg-white'}`}>
+      <div className="absolute top-4 right-4 z-30 bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg max-w-[210px]">
         <div className="space-y-3 min-w-[170px]">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium flex items-center gap-2">
@@ -256,7 +237,15 @@ export function EPUBReader({
             </span>
             <span className="text-sm text-muted-foreground">{fontSize}%</span>
           </div>
-          <Slider value={[fontSize]} onValueChange={handleFontSizeChange} min={80} max={150} step={10} />
+
+          <Slider
+            value={[fontSize]}
+            onValueChange={handleFontSizeChange}
+            min={80}
+            max={150}
+            step={10}
+          />
+
           <Button variant="outline" size="sm" onClick={handleToggleTheme} className="w-full">
             {readerDark ? (
               <><Sun className="h-4 w-4 mr-2" />Modo Claro</>
@@ -267,22 +256,55 @@ export function EPUBReader({
         </div>
       </div>
 
-      <ReactReader
-        url={url}
-        location={location}
-        locationChanged={handleLocationChange}
-        getRendition={handleRendition}
-        swipeable={false}
-        epubInitOptions={{
-          openAs: 'epub',
-        }}
-        epubOptions={{
-          flow: 'paginated',
-          manager: 'default',
-          spread: 'auto',
-          allowScriptedContent: false,
-        }}
-      />
+      <div className="absolute inset-0 z-10 px-8 sm:px-12">
+        <EpubView
+          url={url}
+          location={location}
+          locationChanged={handleLocationChange}
+          getRendition={handleRendition}
+          handleTextSelected={handleTextSelected}
+          epubViewStyles={viewStyles}
+          loadingView={
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+            </div>
+          }
+          errorView={
+            <div className="h-full flex items-center justify-center text-sm text-destructive">
+              Não foi possível abrir este EPUB.
+            </div>
+          }
+          epubInitOptions={{
+            openAs: 'epub',
+          }}
+          epubOptions={{
+            flow: 'paginated',
+            manager: 'default',
+            spread: 'auto',
+            allowScriptedContent: false,
+          }}
+        />
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
+        onClick={() => renditionRef.current?.prev?.()}
+        aria-label="Página anterior"
+      >
+        <ChevronLeft className="h-7 w-7" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
+        onClick={() => renditionRef.current?.next?.()}
+        aria-label="Próxima página"
+      >
+        <ChevronRight className="h-7 w-7" />
+      </Button>
     </div>
   );
 }
