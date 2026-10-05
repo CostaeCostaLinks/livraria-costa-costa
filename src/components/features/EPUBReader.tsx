@@ -57,43 +57,129 @@ export function EPUBReader({
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
   const appliedHighlightsRef = useRef<Map<string, string>>(new Map());
+  const onTextSelectionRef = useRef(onTextSelection);
+  const readerDarkRef = useRef(readerDark);
+  const fontSizeRef = useRef(fontSize);
+
+  useEffect(() => {
+    onTextSelectionRef.current = onTextSelection;
+  }, [onTextSelection]);
+
+  useEffect(() => {
+    readerDarkRef.current = readerDark;
+  }, [readerDark]);
+
+  useEffect(() => {
+    fontSizeRef.current = fontSize;
+  }, [fontSize]);
 
   useEffect(() => {
     if (locationOverride) setLocation(locationOverride);
   }, [locationOverride]);
 
-  const applyReaderTheme = useCallback((rend: any, dark: boolean, size: number) => {
-    if (!rend?.themes) return;
+  const styleContents = useCallback((contents: any, dark: boolean, size: number) => {
+    const doc = contents?.document;
+    if (!doc) return;
+
+    const color = dark ? '#f8fafc' : '#111827';
+    const background = dark ? '#0b1220' : '#ffffff';
+
+    let style = doc.getElementById('costa-reader-theme') as HTMLStyleElement | null;
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'costa-reader-theme';
+      doc.head?.appendChild(style);
+    }
+
+    style.textContent = `
+      html, body {
+        background: ${background} !important;
+        background-color: ${background} !important;
+        color: ${color} !important;
+      }
+      body, body p, body div, body span, body li,
+      body h1, body h2, body h3, body h4, body h5, body h6,
+      body blockquote, body strong, body em, body b, body i {
+        color: ${color} !important;
+      }
+      ::selection {
+        background: rgba(253, 224, 71, 0.62) !important;
+        color: #111827 !important;
+      }
+    `;
 
     try {
-      rend.themes.register('costa-light', {
-        body: {
-          color: '#111827 !important',
-          background: '#ffffff !important',
-          'background-color': '#ffffff !important',
-        },
-        '::selection': {
-          background: 'rgba(253, 224, 71, 0.55)',
-        },
-      });
-
-      rend.themes.register('costa-dark', {
-        body: {
-          color: '#f8fafc !important',
-          background: '#0b1220 !important',
-          'background-color': '#0b1220 !important',
-        },
-        '::selection': {
-          background: 'rgba(253, 224, 71, 0.55)',
-        },
-      });
-
-      rend.themes.select(dark ? 'costa-dark' : 'costa-light');
-      rend.themes.fontSize(`${size}%`);
+      doc.documentElement.style.setProperty('background', background, 'important');
+      doc.body?.style.setProperty('background', background, 'important');
+      doc.body?.style.setProperty('color', color, 'important');
+      doc.body?.style.setProperty('font-size', `${size}%`, 'important');
     } catch {
-      // Alguns EPUBs limitam customizações; a leitura continua normalmente.
+      // noop
     }
   }, []);
+
+  const installSelectionCapture = useCallback((contents: any) => {
+    const doc = contents?.document;
+    if (!doc || contents.__costaSelectionCaptureInstalled) return;
+    contents.__costaSelectionCaptureInstalled = true;
+
+    const capture = () => {
+      window.setTimeout(() => {
+        try {
+          const selection = contents.window?.getSelection?.();
+          if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+
+          const selectedText = selection.toString().trim();
+          if (!selectedText) return;
+
+          const range = selection.getRangeAt(0);
+          const cfiRange = contents.cfiFromRange?.(range);
+          if (!cfiRange) return;
+
+          onTextSelectionRef.current?.({
+            selectedText,
+            position: cfiRange,
+          });
+
+          selection.removeAllRanges();
+        } catch {
+          // Uma seleção inválida não deve interromper a leitura.
+        }
+      }, 0);
+    };
+
+    doc.addEventListener('mouseup', capture, true);
+    doc.addEventListener('touchend', capture, true);
+  }, []);
+
+  const prepareContents = useCallback(
+    (contents: any) => {
+      if (!contents) return;
+      styleContents(contents, readerDarkRef.current, fontSizeRef.current);
+      installSelectionCapture(contents);
+    },
+    [installSelectionCapture, styleContents]
+  );
+
+  const applyReaderTheme = useCallback(
+    (rend: any, dark: boolean, size: number) => {
+      if (!rend) return;
+
+      try {
+        rend.themes?.fontSize?.(`${size}%`);
+      } catch {
+        // noop
+      }
+
+      try {
+        const visibleContents = rend.getContents?.() || [];
+        visibleContents.forEach((contents: any) => styleContents(contents, dark, size));
+      } catch {
+        // noop
+      }
+    },
+    [styleContents]
+  );
 
   useEffect(() => {
     if (!rendition) return;
@@ -167,40 +253,39 @@ export function EPUBReader({
 
   const handleFontSizeChange = (value: number[]) => {
     const newSize = value[0];
+    fontSizeRef.current = newSize;
     setFontSize(newSize);
-    applyReaderTheme(renditionRef.current, readerDark, newSize);
+    applyReaderTheme(renditionRef.current, readerDarkRef.current, newSize);
   };
 
   const handleToggleTheme = () => {
-    const nextDark = !readerDark;
+    const nextDark = !readerDarkRef.current;
+    readerDarkRef.current = nextDark;
     setReaderDark(nextDark);
-    applyReaderTheme(renditionRef.current, nextDark, fontSize);
+    applyReaderTheme(renditionRef.current, nextDark, fontSizeRef.current);
   };
 
-  const handleTextSelected = useCallback(
-    (cfiRange: string, contents: any) => {
-      if (!cfiRange || !onTextSelection) return;
+  const handleTextSelected = useCallback((cfiRange: string, contents: any) => {
+    if (!cfiRange) return;
 
-      try {
-        const selectedText =
-          contents?.window?.getSelection?.()?.toString?.().trim?.() ||
-          renditionRef.current?.getRange?.(cfiRange)?.toString?.().trim?.() ||
-          '';
+    try {
+      const selectedText =
+        contents?.window?.getSelection?.()?.toString?.().trim?.() ||
+        renditionRef.current?.getRange?.(cfiRange)?.toString?.().trim?.() ||
+        '';
 
-        if (!selectedText) return;
+      if (!selectedText) return;
 
-        onTextSelection({
-          selectedText,
-          position: cfiRange,
-        });
+      onTextSelectionRef.current?.({
+        selectedText,
+        position: cfiRange,
+      });
 
-        contents?.window?.getSelection?.()?.removeAllRanges?.();
-      } catch {
-        // Seleção inválida não deve interromper o leitor.
-      }
-    },
-    [onTextSelection]
-  );
+      contents?.window?.getSelection?.()?.removeAllRanges?.();
+    } catch {
+      // noop
+    }
+  }, []);
 
   const handleRendition = useCallback(
     (rend: any) => {
@@ -208,7 +293,26 @@ export function EPUBReader({
       setRendition(rend);
       appliedHighlightsRef.current = new Map();
 
-      applyReaderTheme(rend, readerDark, fontSize);
+      const handleRendered = (_section: any, view: any) => {
+        const contents = view?.contents;
+        prepareContents(contents);
+        window.setTimeout(syncHighlights, 0);
+      };
+
+      try {
+        rend.on('rendered', handleRendered);
+      } catch {
+        // noop
+      }
+
+      try {
+        const visibleContents = rend.getContents?.() || [];
+        visibleContents.forEach((contents: any) => prepareContents(contents));
+      } catch {
+        // noop
+      }
+
+      applyReaderTheme(rend, readerDarkRef.current, fontSizeRef.current);
 
       try {
         Promise.resolve(rend.book.locations.generate(1600))
@@ -222,9 +326,9 @@ export function EPUBReader({
         locationsReadyRef.current = false;
       }
 
-      window.setTimeout(syncHighlights, 50);
+      window.setTimeout(syncHighlights, 80);
     },
-    [applyReaderTheme, fontSize, readerDark, syncHighlights]
+    [applyReaderTheme, prepareContents, syncHighlights]
   );
 
   return (
