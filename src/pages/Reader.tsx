@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Bookmark, Highlighter, List, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { PDFReader, type PDFTextSelection } from '@/components/features/PDFReader';
-import { EPUBReader, type EPUBTextSelection } from '@/components/features/EPUBReader';
+import type { PDFTextSelection } from '@/components/features/PDFReader';
+import type { EPUBTextSelection } from '@/components/features/EPUBReader';
 import { useBook } from '@/hooks/useBooks';
 import { useReadingProgress, useSaveProgress } from '@/hooks/useReadingProgress';
 import {
@@ -23,6 +23,15 @@ import {
   useUpdateReadingHighlight,
 } from '@/hooks/useReadingHighlights';
 import { useToast } from '@/hooks/use-toast';
+
+const PDFReader = lazy(() =>
+  import('@/components/features/PDFReader').then((module) => ({ default: module.PDFReader }))
+);
+
+const EPUBReader = lazy(() =>
+  import('@/components/features/EPUBReader').then((module) => ({ default: module.EPUBReader }))
+);
+
 
 function clampProgress(value: number) {
   if (!Number.isFinite(value)) return 0;
@@ -435,25 +444,34 @@ export default function ReaderPage() {
       </header>
 
       <main className="min-h-0 flex-1">
-        {isEpub ? (
-          <EPUBReader
-            url={book.file_url}
-            initialLocation={initialEpubLocation}
-            locationOverride={typeof readerJump === 'string' ? readerJump : undefined}
-            onLocationChange={handleEpubLocationChange}
-            highlights={highlights}
-            onTextSelection={handleEpubTextSelection}
-          />
-        ) : (
-          <PDFReader
-            url={book.file_url}
-            initialPage={initialPdfPage}
-            targetPage={typeof readerJump === 'number' ? readerJump : undefined}
-            onPageChange={handlePdfPageChange}
-            highlights={highlights}
-            onTextSelection={handlePdfTextSelection}
-          />
-        )}
+        <Suspense
+          fallback={
+            <div className="h-full flex items-center justify-center bg-background">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-3 text-sm text-muted-foreground">Preparando leitor...</span>
+            </div>
+          }
+        >
+          {isEpub ? (
+            <EPUBReader
+              url={book.file_url}
+              initialLocation={initialEpubLocation}
+              locationOverride={typeof readerJump === 'string' ? readerJump : undefined}
+              onLocationChange={handleEpubLocationChange}
+              highlights={highlights}
+              onTextSelection={handleEpubTextSelection}
+            />
+          ) : (
+            <PDFReader
+              url={book.file_url}
+              initialPage={initialPdfPage}
+              targetPage={typeof readerJump === 'number' ? readerJump : undefined}
+              onPageChange={handlePdfPageChange}
+              highlights={highlights}
+              onTextSelection={handlePdfTextSelection}
+            />
+          )}
+        </Suspense>
       </main>
 
       <Dialog open={highlightDialogOpen} onOpenChange={setHighlightDialogOpen}>
