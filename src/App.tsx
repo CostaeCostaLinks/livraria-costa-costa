@@ -1,18 +1,10 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
-import Auth from '@/pages/Auth';
-import Home from '@/pages/Home';
-import Library from '@/pages/Library';
-import Reader from '@/pages/Reader';
-import Admin from '@/pages/Admin';
-import Blog from '@/pages/Blog';
-import PostView from '@/pages/PostView';
-import LinksPage from '@/pages/Links';
-import { DonationModal } from '@/components/features/DonationModal';
+
 import { InstallBanner } from '@/components/features/InstallBanner';
 import { 
   Library as LibraryIcon, 
@@ -29,6 +21,27 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
+
+const Auth = lazy(() => import('@/pages/Auth'));
+const Home = lazy(() => import('@/pages/Home'));
+const Library = lazy(() => import('@/pages/Library'));
+const Reader = lazy(() => import('@/pages/Reader'));
+const Admin = lazy(() => import('@/pages/Admin'));
+const Blog = lazy(() => import('@/pages/Blog'));
+const PostView = lazy(() => import('@/pages/PostView'));
+const LinksPage = lazy(() => import('@/pages/Links'));
+const DonationModal = lazy(() =>
+  import('@/components/features/DonationModal').then((module) => ({ default: module.DonationModal }))
+);
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center bg-background">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+    </div>
+  );
+}
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,10 +74,12 @@ function AppContent() {
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="/auth" element={<Auth />} />
-        <Route path="*" element={<Navigate to="/auth" replace />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/auth" element={<Auth />} />
+          <Route path="*" element={<Navigate to="/auth" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -155,7 +170,9 @@ function AppContent() {
               </div>
 
               <div className="flex items-center gap-3">
-                <DonationModal />
+                <Suspense fallback={null}>
+                  <DonationModal />
+                </Suspense>
 
                 {isInstallable && (
                   <Button 
@@ -205,16 +222,18 @@ function AppContent() {
       <main>
         {!isReading && <InstallBanner />}
 
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/library" element={<Library />} />
-          <Route path="/blog" element={<Blog />} />
-          <Route path="/blog/:id" element={<PostView />} />
-          <Route path="/read/:id" element={<Reader />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/links" element={<LinksPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/library" element={<Library />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:id" element={<PostView />} />
+            <Route path="/read/:id" element={<Reader />} />
+            <Route path="/admin" element={<Admin />} />
+            <Route path="/links" element={<LinksPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* BARRA INFERIOR MOBILE */}
