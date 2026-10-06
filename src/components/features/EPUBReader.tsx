@@ -102,6 +102,13 @@ export function EPUBReader({
       body blockquote, body strong, body em, body b, body i {
         color: ${color} !important;
       }
+      html, body, body * {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+      body {
+        cursor: text !important;
+      }
       ::selection {
         background: rgba(253, 224, 71, 0.62) !important;
         color: #111827 !important;
@@ -113,6 +120,10 @@ export function EPUBReader({
       doc.body?.style.setProperty('background', background, 'important');
       doc.body?.style.setProperty('color', color, 'important');
       doc.body?.style.setProperty('font-size', `${size}%`, 'important');
+      doc.documentElement.style.setProperty('user-select', 'text', 'important');
+      doc.documentElement.style.setProperty('-webkit-user-select', 'text', 'important');
+      doc.body?.style.setProperty('user-select', 'text', 'important');
+      doc.body?.style.setProperty('-webkit-user-select', 'text', 'important');
     } catch {
       // noop
     }
@@ -123,8 +134,13 @@ export function EPUBReader({
     if (!doc || contents.__costaSelectionCaptureInstalled) return;
     contents.__costaSelectionCaptureInstalled = true;
 
+    let selectionTimer: number | null = null;
+    let lastCfi = '';
+
     const capture = () => {
-      window.setTimeout(() => {
+      if (selectionTimer !== null) window.clearTimeout(selectionTimer);
+
+      selectionTimer = window.setTimeout(() => {
         try {
           const selection = contents.window?.getSelection?.();
           if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
@@ -132,23 +148,24 @@ export function EPUBReader({
           const selectedText = selection.toString().trim();
           if (!selectedText) return;
 
-          const range = selection.getRangeAt(0);
+          const range = selection.getRangeAt(0).cloneRange();
           const cfiRange = contents.cfiFromRange?.(range);
-          if (!cfiRange) return;
+          if (!cfiRange || cfiRange === lastCfi) return;
 
+          lastCfi = cfiRange;
           onTextSelectionRef.current?.({
             selectedText,
             position: cfiRange,
           });
-
-          selection.removeAllRanges();
         } catch {
           // Uma seleção inválida não deve interromper a leitura.
         }
-      }, 0);
+      }, 180);
     };
 
+    doc.addEventListener('selectionchange', capture, true);
     doc.addEventListener('mouseup', capture, true);
+    doc.addEventListener('pointerup', capture, true);
     doc.addEventListener('touchend', capture, true);
   }, []);
 
@@ -258,13 +275,6 @@ export function EPUBReader({
     applyReaderTheme(renditionRef.current, readerDarkRef.current, newSize);
   };
 
-  const handleToggleTheme = () => {
-    const nextDark = !readerDarkRef.current;
-    readerDarkRef.current = nextDark;
-    setReaderDark(nextDark);
-    applyReaderTheme(renditionRef.current, nextDark, fontSizeRef.current);
-  };
-
   const handleTextSelected = useCallback((cfiRange: string, contents: any) => {
     if (!cfiRange) return;
 
@@ -350,13 +360,30 @@ export function EPUBReader({
             step={10}
           />
 
-          <Button variant="outline" size="sm" onClick={handleToggleTheme} className="w-full">
-            {readerDark ? (
-              <><Sun className="h-4 w-4 mr-2" />Modo Claro</>
-            ) : (
-              <><Moon className="h-4 w-4 mr-2" />Modo Escuro</>
-            )}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant={readerDark ? 'outline' : 'default'}
+              size="sm"
+              onClick={() => {
+                readerDarkRef.current = false;
+                setReaderDark(false);
+                applyReaderTheme(renditionRef.current, false, fontSizeRef.current);
+              }}
+            >
+              <Sun className="h-4 w-4 mr-1" /> Claro
+            </Button>
+            <Button
+              variant={readerDark ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                readerDarkRef.current = true;
+                setReaderDark(true);
+                applyReaderTheme(renditionRef.current, true, fontSizeRef.current);
+              }}
+            >
+              <Moon className="h-4 w-4 mr-1" /> Escuro
+            </Button>
+          </div>
         </div>
       </div>
 
