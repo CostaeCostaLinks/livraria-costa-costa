@@ -50,7 +50,12 @@ export default function ReaderPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const { data: book, isLoading: bookLoading } = useBook(id);
+  const {
+    data: book,
+    isLoading: bookLoading,
+    isError: bookError,
+    refetch: refetchBook,
+  } = useBook(id);
   const { data: savedProgress, isLoading: progressLoading } = useReadingProgress(id);
   const { data: bookmarks = [] } = useReadingBookmarks(id);
   const { data: highlights = [] } = useReadingHighlights(id);
@@ -325,6 +330,23 @@ export default function ReaderPage() {
       <div className="h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <span className="ml-3 font-medium text-muted-foreground">Abrindo livro...</span>
+      </div>
+    );
+  }
+
+  if (bookError) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
+        <p className="text-xl font-semibold text-foreground">Não foi possível carregar o livro</p>
+        <p className="text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={() => refetchBook()}>
+            Tentar novamente
+          </Button>
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+          </Button>
+        </div>
       </div>
     );
   }
