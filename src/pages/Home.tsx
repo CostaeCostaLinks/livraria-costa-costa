@@ -4,7 +4,7 @@ import { useBooks } from '@/hooks/useBooks';
 import { BookCard } from '@/components/features/BookCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, BookOpen, Sparkles, TrendingUp, BookOpenCheck } from 'lucide-react';
+import { Search, BookOpen, Sparkles, TrendingUp, BookOpenCheck, RefreshCw, X } from 'lucide-react';
 
 const CATEGORIES = [
   'Todos', 'Ficção', 'Romance', 'Fantasia', 'Suspense', 'Clássicos', 
@@ -18,7 +18,7 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const { data: books, isLoading } = useBooks(
+  const { data: books, isLoading, isError, refetch } = useBooks(
     selectedCategory === 'Todos' ? undefined : selectedCategory
   );
 
@@ -58,12 +58,23 @@ export default function Home() {
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
                 <Input
-                  type="text"
-                  placeholder="Buscar por título, autor ou assunto..."
-                  className="pl-12 h-14 rounded-full bg-white text-slate-900 border-0 shadow-2xl focus-visible:ring-2 focus-visible:ring-amber-500 text-base"
+                  type="search"
+                  placeholder="Buscar por título ou autor..."
+                  aria-label="Buscar livros por título ou autor"
+                  className="pl-12 pr-12 h-14 rounded-full bg-white text-slate-900 border-0 shadow-2xl focus-visible:ring-2 focus-visible:ring-amber-500 text-base"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -136,6 +147,17 @@ export default function Home() {
                 <BookCard key={i} isLoading={true} />
               ))}
             </div>
+          ) : isError ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-amber-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <RefreshCw className="h-7 w-7 text-amber-700" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Não foi possível carregar o acervo</h3>
+              <p className="text-sm text-slate-500 mb-5">Verifique sua conexão e tente novamente.</p>
+              <Button onClick={() => refetch()} className="rounded-full bg-slate-900 hover:bg-slate-800">
+                Tentar novamente
+              </Button>
+            </div>
           ) : filteredBooks && filteredBooks.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6">
               {filteredBooks.map((book) => (
@@ -155,10 +177,13 @@ export default function Home() {
               <p className="text-sm text-slate-500">
                 Tente ajustar sua busca ou mudar a categoria selecionada.
               </p>
-              {selectedCategory !== 'Todos' && (
+              {(selectedCategory !== 'Todos' || searchTerm) && (
                 <Button 
                   variant="link" 
-                  onClick={() => setSelectedCategory('Todos')}
+                  onClick={() => {
+                    setSelectedCategory('Todos');
+                    setSearchTerm('');
+                  }}
                   className="mt-4 text-amber-600 font-bold"
                 >
                   Limpar filtros
