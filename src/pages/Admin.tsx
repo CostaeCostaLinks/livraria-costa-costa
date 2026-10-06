@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { getStorageObjectPath } from '@/lib/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,6 +40,21 @@ export default function Admin() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [postForm, setPostForm] = useState({ title: '', subtitle: '', content: '', video_url: '' });
   const [postCover, setPostCover] = useState<File | null>(null);
+
+  const removeStorageObjects = async (values: Array<string | null | undefined>) => {
+    const paths = Array.from(
+      new Set(
+        values
+          .map((value) => getStorageObjectPath(value))
+          .filter((path): path is string => Boolean(path))
+      )
+    );
+
+    if (paths.length === 0) return;
+
+    const { error } = await supabase.storage.from('books').remove(paths);
+    if (error) throw error;
+  };
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -124,6 +140,10 @@ export default function Admin() {
 
     setLoading(true);
     try {
+      const existingBook = editingBookId
+        ? books?.find((book: any) => book.id === editingBookId)
+        : null;
+
       let bookUrl = null, coverUrl = null;
       let fileType = 'pdf';
 
@@ -152,6 +172,18 @@ export default function Admin() {
       if (editingBookId) {
         const { error } = await supabase.from('books').update(payload).eq('id', editingBookId);
         if (error) throw error;
+
+        const staleObjects = [
+          bookUrl && existingBook?.file_url && existingBook.file_url !== bookUrl ? existingBook.file_url : null,
+          coverUrl && existingBook?.cover_url && existingBook.cover_url !== coverUrl ? existingBook.cover_url : null,
+        ];
+
+        try {
+          await removeStorageObjects(staleObjects);
+        } catch (cleanupError) {
+          console.error('Erro ao remover objetos antigos do livro:', cleanupError);
+          toast.warning('Livro atualizado, mas um arquivo antigo não pôde ser removido.');
+        }
       } else {
         if (!bookUrl) throw new Error("Arquivo necessário");
         const { error } = await supabase.from('books').insert({ ...payload, file_type: fileType });
@@ -171,11 +203,19 @@ export default function Admin() {
   const deleteBook = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este livro?')) return;
 
+    const existingBook = books?.find((book: any) => book.id === id);
     const { error } = await supabase.from('books').delete().eq('id', id);
     if (error) {
       console.error('Erro ao excluir livro:', error);
       toast.error('Não foi possível excluir o livro.');
       return;
+    }
+
+    try {
+      await removeStorageObjects([existingBook?.file_url, existingBook?.cover_url]);
+    } catch (cleanupError) {
+      console.error('Erro ao remover arquivos do livro excluído:', cleanupError);
+      toast.warning('Livro excluído, mas um arquivo antigo não pôde ser removido.');
     }
 
     toast.success('Livro excluído.');
@@ -191,6 +231,10 @@ export default function Admin() {
 
     setLoading(true);
     try {
+      const existingPost = editingPostId
+        ? posts?.find((post: any) => post.id === editingPostId)
+        : null;
+
       let coverUrl = null;
       if (postCover) {
         const name = `blog/post-${Date.now()}.${postCover.name.split('.').pop()}`;
@@ -204,6 +248,15 @@ export default function Admin() {
       if (editingPostId) {
         const { error } = await supabase.from('posts').update(payload).eq('id', editingPostId);
         if (error) throw error;
+
+        if (coverUrl && existingPost?.cover_url && existingPost.cover_url !== coverUrl) {
+          try {
+            await removeStorageObjects([existingPost.cover_url]);
+          } catch (cleanupError) {
+            console.error('Erro ao remover capa antiga do post:', cleanupError);
+            toast.warning('Post atualizado, mas a capa antiga não pôde ser removida.');
+          }
+        }
       } else {
         const { error } = await supabase.from('posts').insert(payload);
         if (error) throw error;
@@ -221,11 +274,19 @@ export default function Admin() {
   const deletePost = async (id: string) => {
     if (!confirm('Excluir este artigo?')) return;
 
+    const existingPost = posts?.find((post: any) => post.id === id);
     const { error } = await supabase.from('posts').delete().eq('id', id);
     if (error) {
       console.error('Erro ao excluir post:', error);
       toast.error('Não foi possível excluir o post.');
       return;
+    }
+
+    try {
+      await removeStorageObjects([existingPost?.cover_url]);
+    } catch (cleanupError) {
+      console.error('Erro ao remover capa do post excluído:', cleanupError);
+      toast.warning('Post excluído, mas a capa antiga não pôde ser removida.');
     }
 
     toast.success('Post excluído.');
