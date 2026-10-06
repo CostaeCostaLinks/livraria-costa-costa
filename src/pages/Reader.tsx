@@ -91,6 +91,10 @@ export default function ReaderPage() {
 
   const initialEpubLocation = savedProgress?.last_position || undefined;
   const isEpub = !!book && (book.file_type === 'epub' || book.file_type?.includes('epub'));
+  const currentBookmark = useMemo(
+    () => bookmarks.find((bookmark) => bookmark.position === currentPosition) || null,
+    [bookmarks, currentPosition]
+  );
 
   useEffect(() => {
     if (!savedProgress) return;
@@ -169,15 +173,19 @@ export default function ReaderPage() {
     [currentProgress, queueProgressSave]
   );
 
-  const handleAddBookmark = async () => {
+  const handleBookmarkAction = async () => {
     if (!id || !currentPosition) return;
 
-    const alreadyExists = bookmarks.some((bookmark) => bookmark.position === currentPosition);
-    if (alreadyExists) {
-      toast({
-        title: 'Marcador já existe',
-        description: isEpub ? 'Este trecho já está nos seus marcadores.' : `A página ${currentPage} já está marcada.`,
-      });
+    if (currentBookmark) {
+      try {
+        await deleteBookmark.mutateAsync({ id: currentBookmark.id, bookId: id });
+        toast({
+          title: 'Marcador removido',
+          description: isEpub ? 'O marcador deste trecho foi removido.' : `O marcador da página ${currentPage} foi removido.`,
+        });
+      } catch {
+        toast({ title: 'Não foi possível remover o marcador', variant: 'destructive' });
+      }
       return;
     }
 
@@ -262,6 +270,26 @@ export default function ReaderPage() {
     if (pageNumber) setReaderJump(pageNumber);
   };
 
+  const handleDeleteHighlight = async (highlightId: string) => {
+    if (!id) return;
+    try {
+      await deleteHighlight.mutateAsync({ id: highlightId, bookId: id });
+      toast({ title: 'Destaque excluído' });
+    } catch {
+      toast({ title: 'Não foi possível excluir o destaque', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteBookmark = async (bookmarkId: string) => {
+    if (!id) return;
+    try {
+      await deleteBookmark.mutateAsync({ id: bookmarkId, bookId: id });
+      toast({ title: 'Marcador excluído' });
+    } catch {
+      toast({ title: 'Não foi possível excluir o marcador', variant: 'destructive' });
+    }
+  };
+
   const handleEditHighlight = (highlight: ReadingHighlight) => {
     setEditingHighlight(highlight);
     setEditColor(highlight.color);
@@ -330,8 +358,19 @@ export default function ReaderPage() {
           </div>
         </div>
 
-        <Button variant="ghost" size="icon" onClick={handleAddBookmark} aria-label="Adicionar marcador">
-          <Bookmark className="h-5 w-5" />
+        <Button
+          variant={currentBookmark ? 'secondary' : 'ghost'}
+          size="icon"
+          onClick={handleBookmarkAction}
+          disabled={addBookmark.isPending || deleteBookmark.isPending}
+          aria-label={currentBookmark ? 'Remover marcador atual' : 'Adicionar marcador'}
+          title={currentBookmark ? 'Remover marcador atual' : 'Adicionar marcador'}
+        >
+          {addBookmark.isPending || deleteBookmark.isPending ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Bookmark className={`h-5 w-5 ${currentBookmark ? 'fill-current' : ''}`} />
+          )}
         </Button>
 
         <Sheet>
@@ -347,7 +386,11 @@ export default function ReaderPage() {
             </SheetHeader>
             <div className="mt-6 space-y-3 overflow-y-auto max-h-[calc(100dvh-140px)] pr-1">
               {highlights.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Você ainda não destacou nenhum trecho neste livro.</p>
+                <div className="rounded-xl border border-dashed p-6 text-center">
+                  <Highlighter className="h-8 w-8 mx-auto mb-3 text-muted-foreground/60" />
+                  <p className="text-sm font-medium">Nenhum destaque ainda</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Selecione um trecho do livro para criar seu primeiro destaque.</p>
+                </div>
               ) : (
                 highlights.map((highlight) => (
                   <div key={highlight.id} className="rounded-xl border p-3 space-y-2">
@@ -385,8 +428,10 @@ export default function ReaderPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteHighlight.mutate({ id: highlight.id, bookId: id })}
+                          onClick={() => handleDeleteHighlight(highlight.id)}
+                          disabled={deleteHighlight.isPending}
                           aria-label="Excluir destaque"
+                          title="Excluir destaque"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -410,9 +455,13 @@ export default function ReaderPage() {
               <SheetTitle>Meus marcadores</SheetTitle>
               <SheetDescription>Volte rapidamente aos pontos que você marcou neste livro.</SheetDescription>
             </SheetHeader>
-            <div className="mt-6 space-y-3">
+            <div className="mt-6 space-y-3 overflow-y-auto max-h-[calc(100dvh-140px)] pr-1">
               {bookmarks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Você ainda não adicionou marcadores neste livro.</p>
+                <div className="rounded-xl border border-dashed p-6 text-center">
+                  <Bookmark className="h-8 w-8 mx-auto mb-3 text-muted-foreground/60" />
+                  <p className="text-sm font-medium">Nenhum marcador ainda</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Use o ícone de marcador no topo para guardar sua posição atual.</p>
+                </div>
               ) : (
                 bookmarks.map((bookmark) => (
                   <div key={bookmark.id} className="rounded-xl border p-3 flex items-center gap-2">
@@ -430,8 +479,10 @@ export default function ReaderPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => deleteBookmark.mutate({ id: bookmark.id, bookId: id })}
+                      onClick={() => handleDeleteBookmark(bookmark.id)}
+                      disabled={deleteBookmark.isPending}
                       aria-label="Excluir marcador"
+                      title="Excluir marcador"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
