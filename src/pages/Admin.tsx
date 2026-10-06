@@ -47,15 +47,23 @@ export default function Admin() {
     }
   }, [user, navigate]);
 
-  const { data: books } = useQuery({
+  const { data: books, isError: booksError, refetch: refetchBooks } = useQuery({
     queryKey: ['admin-books'],
-    queryFn: async () => (await supabase.from('books').select('*').order('order_index', { ascending: true })).data,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('books').select('*').order('order_index', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
     enabled: !!user && user.role === 'admin'
   });
 
-  const { data: posts } = useQuery({
+  const { data: posts, isError: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ['admin-posts'],
-    queryFn: async () => (await supabase.from('posts').select('*').order('created_at', { ascending: false })).data,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
     enabled: !!user && user.role === 'admin'
   });
 
@@ -122,13 +130,15 @@ export default function Admin() {
       if (bookFile) {
         if (bookFile.name.toLowerCase().endsWith('.epub')) fileType = 'epub';
         const name = `livro-${Date.now()}.${bookFile.name.split('.').pop()}`;
-        await supabase.storage.from('books').upload(name, bookFile);
+        const { error: bookUploadError } = await supabase.storage.from('books').upload(name, bookFile);
+        if (bookUploadError) throw bookUploadError;
         bookUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
       }
 
       if (coverFile) {
         const name = `covers/capa-${Date.now()}.${coverFile.name.split('.').pop()}`;
-        await supabase.storage.from('books').upload(name, coverFile);
+        const { error: coverUploadError } = await supabase.storage.from('books').upload(name, coverFile);
+        if (coverUploadError) throw coverUploadError;
         coverUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
       }
 
@@ -139,22 +149,37 @@ export default function Admin() {
       }
       if (coverUrl) payload.cover_url = coverUrl;
 
-      if (editingBookId) await supabase.from('books').update(payload).eq('id', editingBookId);
-      else { if (!bookUrl) throw new Error("Arquivo necessário"); await supabase.from('books').insert({ ...payload, file_type: fileType }); }
+      if (editingBookId) {
+        const { error } = await supabase.from('books').update(payload).eq('id', editingBookId);
+        if (error) throw error;
+      } else {
+        if (!bookUrl) throw new Error("Arquivo necessário");
+        const { error } = await supabase.from('books').insert({ ...payload, file_type: fileType });
+        if (error) throw error;
+      }
 
       toast.success('Livro salvo com sucesso!');
       setEditingBookId(null); setBookForm({ title: '', author: '', description: '', category: '', order_index: 0 });
       setBookFile(null); setCoverFile(null);
       queryClient.invalidateQueries({ queryKey: ['admin-books'] });
-    } catch (error) { toast.error('Erro ao salvar livro'); } finally { setLoading(false); }
+    } catch (error) {
+      console.error('Erro ao salvar livro:', error);
+      toast.error('Não foi possível salvar o livro. Tente novamente.');
+    } finally { setLoading(false); }
   };
 
-  // FUNÇÃO RESTAURADA AQUI!
   const deleteBook = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este livro?')) {
-      await supabase.from('books').delete().eq('id', id);
-      queryClient.invalidateQueries({ queryKey: ['admin-books'] });
+    if (!confirm('Tem certeza que deseja excluir este livro?')) return;
+
+    const { error } = await supabase.from('books').delete().eq('id', id);
+    if (error) {
+      console.error('Erro ao excluir livro:', error);
+      toast.error('Não foi possível excluir o livro.');
+      return;
     }
+
+    toast.success('Livro excluído.');
+    queryClient.invalidateQueries({ queryKey: ['admin-books'] });
   };
 
   const handlePostSubmit = async (e: React.FormEvent) => {
@@ -169,28 +194,57 @@ export default function Admin() {
       let coverUrl = null;
       if (postCover) {
         const name = `blog/post-${Date.now()}.${postCover.name.split('.').pop()}`;
-        await supabase.storage.from('books').upload(name, postCover);
+        const { error: postCoverUploadError } = await supabase.storage.from('books').upload(name, postCover);
+        if (postCoverUploadError) throw postCoverUploadError;
         coverUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
       }
       const payload: any = { ...postForm };
       if (coverUrl) payload.cover_url = coverUrl;
       
-      if (editingPostId) await supabase.from('posts').update(payload).eq('id', editingPostId);
-      else await supabase.from('posts').insert(payload);
+      if (editingPostId) {
+        const { error } = await supabase.from('posts').update(payload).eq('id', editingPostId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('posts').insert(payload);
+        if (error) throw error;
+      }
       
       toast.success('Post publicado com sucesso!');
       setEditingPostId(null); setPostForm({ title: '', subtitle: '', content: '', video_url: '' }); setPostCover(null);
       queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
-    } catch (error) { toast.error('Erro ao salvar post'); } finally { setLoading(false); }
+    } catch (error) {
+      console.error('Erro ao salvar post:', error);
+      toast.error('Não foi possível salvar o post. Tente novamente.');
+    } finally { setLoading(false); }
   };
 
   const deletePost = async (id: string) => {
-    if (confirm('Excluir este artigo?')) { await supabase.from('posts').delete().eq('id', id); queryClient.invalidateQueries({ queryKey: ['admin-posts'] }); }
+    if (!confirm('Excluir este artigo?')) return;
+
+    const { error } = await supabase.from('posts').delete().eq('id', id);
+    if (error) {
+      console.error('Erro ao excluir post:', error);
+      toast.error('Não foi possível excluir o post.');
+      return;
+    }
+
+    toast.success('Post excluído.');
+    queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
   };
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl pb-24">
       <h1 className="text-3xl font-serif font-bold text-primary mb-6">Painel Administrativo</h1>
+      {(booksError || postsError) && (
+        <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-semibold text-destructive">Parte dos dados administrativos não pôde ser carregada.</p>
+          <p className="mt-1 text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {booksError && <Button type="button" variant="outline" size="sm" onClick={() => refetchBooks()}>Recarregar livros</Button>}
+            {postsError && <Button type="button" variant="outline" size="sm" onClick={() => refetchPosts()}>Recarregar posts</Button>}
+          </div>
+        </div>
+      )}
       <Tabs defaultValue="books" className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
           <TabsTrigger value="books" className="flex gap-2"><Book className="h-4 w-4"/> Livros</TabsTrigger>
