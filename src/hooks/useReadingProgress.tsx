@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
+import { resolveSignedUrl, signStorageUrls } from '@/lib/storage';
 
 export function useReadingProgress(bookId?: string) {
   const { user } = useAuthStore();
@@ -45,10 +46,13 @@ export function useMyLibrary() {
 
       if (error) throw error;
       
-      return data
-        .filter((item: any) => item.book !== null)
+      const validItems = data.filter((item: any) => item.book !== null);
+      const signedCovers = await signStorageUrls(validItems.map((item: any) => item.book.cover_url));
+
+      return validItems
         .map((item: any) => ({
           ...item.book,
+          cover_url: resolveSignedUrl(item.book.cover_url, signedCovers),
           progress: item.progress,
           last_position: item.last_position,
           last_read_at: item.updated_at,
