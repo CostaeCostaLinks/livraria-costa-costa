@@ -229,7 +229,10 @@ function AppContent() {
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:id" element={<PostView />} />
             <Route path="/read/:id" element={<Reader />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route
+              path="/admin"
+              element={user.role === 'admin' ? <Admin /> : <Navigate to="/" replace />}
+            />
             <Route path="/links" element={<LinksPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
