@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { createSignedStorageUrl } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import DOMPurify from "dompurify";
 import { Helmet } from 'react-helmet-async';
@@ -29,8 +30,14 @@ export default function PostView() {
   const { data: post, isLoading } = useQuery({
     queryKey: ["post", id],
     queryFn: async () => {
-      const { data } = await supabase.from("posts").select("*").eq("id", id).single();
-      return data;
+      const { data, error } = await supabase.from("posts").select("*").eq("id", id).single();
+      if (error) throw error;
+      if (!data) return null;
+
+      return {
+        ...data,
+        cover_url: await createSignedStorageUrl(data.cover_url),
+      };
     },
     enabled: !!id,
   });
