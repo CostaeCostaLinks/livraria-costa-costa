@@ -56,7 +56,7 @@ export function EPUBReader({
 
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
-  const appliedHighlightsRef = useRef<Map<string, string>>(new Map());
+  const appliedHighlightCfisRef = useRef<Set<string>>(new Set());
   const onTextSelectionRef = useRef(onTextSelection);
   const readerDarkRef = useRef(readerDark);
   const fontSizeRef = useRef(fontSize);
@@ -214,31 +214,28 @@ export function EPUBReader({
         highlight.position.length > 0
     );
 
-    const desiredIds = new Set(epubHighlights.map((highlight) => highlight.id));
-
-    appliedHighlightsRef.current.forEach((cfiRange, id) => {
-      if (desiredIds.has(id)) return;
+    // Reconstrói a camada de highlights a partir do banco.
+    // Isso é mais confiável no EPUB porque as views são recriadas ao paginar,
+    // alterar fonte, alternar tema ou redimensionar a janela.
+    appliedHighlightCfisRef.current.forEach((cfiRange) => {
       try {
         rend.annotations.remove(cfiRange, 'highlight');
       } catch {
         // noop
       }
-      appliedHighlightsRef.current.delete(id);
     });
+    appliedHighlightCfisRef.current.clear();
 
     epubHighlights.forEach((highlight) => {
-      if (appliedHighlightsRef.current.has(highlight.id)) return;
-
       try {
-        rend.annotations.add(
-          'highlight',
+        rend.annotations.highlight(
           highlight.position,
           { highlightId: highlight.id },
           undefined,
           `reader-highlight-${highlight.color}`,
           epubHighlightStyles[highlight.color] || epubHighlightStyles.yellow
         );
-        appliedHighlightsRef.current.set(highlight.id, highlight.position);
+        appliedHighlightCfisRef.current.add(highlight.position);
       } catch {
         // Um CFI inválido não deve interromper a leitura.
       }
@@ -273,6 +270,7 @@ export function EPUBReader({
     fontSizeRef.current = newSize;
     setFontSize(newSize);
     applyReaderTheme(renditionRef.current, readerDarkRef.current, newSize);
+    window.setTimeout(syncHighlights, 120);
   };
 
   const handleTextSelected = useCallback((cfiRange: string, contents: any) => {
@@ -301,7 +299,7 @@ export function EPUBReader({
     (rend: any) => {
       renditionRef.current = rend;
       setRendition(rend);
-      appliedHighlightsRef.current = new Map();
+      appliedHighlightCfisRef.current = new Set();
 
       const handleRendered = (_section: any, view: any) => {
         const contents = view?.contents;
@@ -368,6 +366,7 @@ export function EPUBReader({
                 readerDarkRef.current = false;
                 setReaderDark(false);
                 applyReaderTheme(renditionRef.current, false, fontSizeRef.current);
+                window.setTimeout(syncHighlights, 120);
               }}
             >
               <Sun className="h-4 w-4 mr-1" /> Claro
@@ -379,6 +378,7 @@ export function EPUBReader({
                 readerDarkRef.current = true;
                 setReaderDark(true);
                 applyReaderTheme(renditionRef.current, true, fontSizeRef.current);
+                window.setTimeout(syncHighlights, 120);
               }}
             >
               <Moon className="h-4 w-4 mr-1" /> Escuro
