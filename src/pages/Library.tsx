@@ -1,11 +1,11 @@
 import { useMyLibrary } from '@/hooks/useReadingProgress';
 import { BookCard } from '@/components/features/BookCard';
-import { Library as LibraryIcon, BookOpen, Clock } from 'lucide-react';
+import { Library as LibraryIcon, BookOpen, Clock, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
 export default function Library() {
-  const { data: books, isLoading } = useMyLibrary();
+  const { data: books, isLoading, isError, refetch } = useMyLibrary();
   const navigate = useNavigate();
 
   // MUDANÇA: bg-slate-50
@@ -36,6 +36,17 @@ export default function Library() {
           {[...Array(6)].map((_, i) => (
             <BookCard key={i} isLoading={true} />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-200 shadow-sm text-center px-4">
+          <div className="bg-amber-50 p-5 rounded-full mb-5">
+            <RefreshCw className="h-8 w-8 text-amber-700" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">Não foi possível carregar sua biblioteca</h3>
+          <p className="text-slate-600 mb-6 max-w-md">Verifique sua conexão e tente novamente.</p>
+          <Button onClick={() => refetch()} className="rounded-full px-7 bg-slate-900 hover:bg-slate-800 text-white">
+            Tentar novamente
+          </Button>
         </div>
       ) : books && books.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6">
