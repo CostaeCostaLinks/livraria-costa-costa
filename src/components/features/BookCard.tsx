@@ -45,8 +45,17 @@ export function BookCard({ book, progress, onClick, isLoading = false }: BookCar
 
   return (
     <div 
-      className="group relative flex flex-col h-full cursor-pointer"
-      onClick={() => onClick && onClick(book)}
+      className="group relative flex flex-col h-full cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+      onClick={() => onClick?.(book)}
+      onKeyDown={(event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && onClick) {
+          event.preventDefault();
+          onClick(book);
+        }
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `${currentProgress > 0 ? 'Continuar' : 'Ler'} ${book.title}, de ${book.author}` : undefined}
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-slate-100 shadow-md transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-xl group-hover:shadow-slate-900/10 border border-slate-200/60">
         {book.cover_url ? (
@@ -56,6 +65,8 @@ export function BookCard({ book, progress, onClick, isLoading = false }: BookCar
             className={`h-full w-full object-cover transition-all duration-700 ease-out ${
               imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
             }`}
+            loading="lazy"
+            decoding="async"
             onLoad={() => setImageLoaded(true)}
             onError={(e) => { e.currentTarget.src = "https://placehold.co/500x750?text=Sem+Capa"; setImageLoaded(true); }}
           />
@@ -87,7 +98,12 @@ export function BookCard({ book, progress, onClick, isLoading = false }: BookCar
           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20">
             <div 
               className="h-full bg-amber-500 transition-all duration-500"
-              style={{ width: `${currentProgress}%` }}
+              style={{ width: `${Math.min(100, Math.max(0, currentProgress))}%` }}
+              role="progressbar"
+              aria-label="Progresso de leitura"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(currentProgress)}
             />
           </div>
         )}
