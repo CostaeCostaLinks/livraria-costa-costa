@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase, isDemoMode } from '@/lib/supabase';
+import { createSignedStorageUrl, resolveSignedUrl, signStorageUrls } from '@/lib/storage';
 
 export function useBooks(category?: string) {
   return useQuery({
@@ -21,7 +22,12 @@ export function useBooks(category?: string) {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data;
+
+      const signedCovers = await signStorageUrls((data || []).map((book) => book.cover_url));
+      return (data || []).map((book) => ({
+        ...book,
+        cover_url: resolveSignedUrl(book.cover_url, signedCovers),
+      }));
     },
   });
 }
@@ -39,7 +45,17 @@ export function useBook(id: string) {
         .single();
 
       if (error) throw error;
-      return data;
+
+      const [fileUrl, coverUrl] = await Promise.all([
+        createSignedStorageUrl(data.file_url),
+        createSignedStorageUrl(data.cover_url),
+      ]);
+
+      return {
+        ...data,
+        file_url: fileUrl,
+        cover_url: coverUrl,
+      };
     },
     enabled: !!id,
   });

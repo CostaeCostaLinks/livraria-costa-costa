@@ -132,14 +132,14 @@ export default function Admin() {
         const name = `livro-${Date.now()}.${bookFile.name.split('.').pop()}`;
         const { error: bookUploadError } = await supabase.storage.from('books').upload(name, bookFile);
         if (bookUploadError) throw bookUploadError;
-        bookUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
+        bookUrl = name;
       }
 
       if (coverFile) {
         const name = `covers/capa-${Date.now()}.${coverFile.name.split('.').pop()}`;
         const { error: coverUploadError } = await supabase.storage.from('books').upload(name, coverFile);
         if (coverUploadError) throw coverUploadError;
-        coverUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
+        coverUrl = name;
       }
 
       const payload: any = { ...bookForm };
@@ -196,7 +196,7 @@ export default function Admin() {
         const name = `blog/post-${Date.now()}.${postCover.name.split('.').pop()}`;
         const { error: postCoverUploadError } = await supabase.storage.from('books').upload(name, postCover);
         if (postCoverUploadError) throw postCoverUploadError;
-        coverUrl = supabase.storage.from('books').getPublicUrl(name).data.publicUrl;
+        coverUrl = name;
       }
       const payload: any = { ...postForm };
       if (coverUrl) payload.cover_url = coverUrl;
