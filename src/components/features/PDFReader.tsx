@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Button } from '@/components/ui/button';
 import { Loader2, ZoomIn, ZoomOut, ArrowUpToLine } from 'lucide-react';
@@ -7,7 +7,7 @@ import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 export interface PDFTextSelection {
   selectedText: string;
@@ -47,6 +47,24 @@ export function PDFReader({
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [trackingReady, setTrackingReady] = useState(false);
+
+  const pdfHighlightsByPage = useMemo(() => {
+    const grouped = new Map<number, ReadingHighlight[]>();
+
+    highlights.forEach((highlight) => {
+      if (highlight.format !== 'pdf' || !highlight.page_number) return;
+      const list = grouped.get(highlight.page_number) || [];
+      list.push(highlight);
+      grouped.set(highlight.page_number, list);
+    });
+
+    return grouped;
+  }, [highlights]);
+
+  const pageNumbers = useMemo(
+    () => Array.from({ length: numPages }, (_, index) => index + 1),
+    [numPages]
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -295,11 +313,8 @@ export function PDFReader({
             }
             className="flex flex-col items-center gap-4 w-full"
           >
-            {Array.from({ length: numPages }, (_, index) => {
-              const pageNumber = index + 1;
-              const pageHighlights = highlights.filter(
-                (highlight) => highlight.format === 'pdf' && highlight.page_number === pageNumber
-              );
+            {pageNumbers.map((pageNumber, index) => {
+              const pageHighlights = pdfHighlightsByPage.get(pageNumber) || [];
 
               return (
                 <div
