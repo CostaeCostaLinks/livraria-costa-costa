@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Bookmark, Highlighter, List, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Bookmark, Highlighter, List, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -16,9 +16,11 @@ import {
 } from '@/hooks/useReadingBookmarks';
 import {
   type HighlightColor,
+  type ReadingHighlight,
   useAddReadingHighlight,
   useDeleteReadingHighlight,
   useReadingHighlights,
+  useUpdateReadingHighlight,
 } from '@/hooks/useReadingHighlights';
 import { useToast } from '@/hooks/use-toast';
 
@@ -47,6 +49,7 @@ export default function ReaderPage() {
   const addBookmark = useAddReadingBookmark();
   const deleteBookmark = useDeleteReadingBookmark();
   const addHighlight = useAddReadingHighlight();
+  const updateHighlight = useUpdateReadingHighlight();
   const deleteHighlight = useDeleteReadingHighlight();
 
   const [currentPosition, setCurrentPosition] = useState<string>('1');
@@ -63,6 +66,10 @@ export default function ReaderPage() {
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>('yellow');
   const [highlightNote, setHighlightNote] = useState('');
+  const [editingHighlight, setEditingHighlight] = useState<ReadingHighlight | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editColor, setEditColor] = useState<HighlightColor>('yellow');
+  const [editNote, setEditNote] = useState('');
 
   const pendingSave = useRef<{ progress: number; lastPosition: string } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -246,6 +253,36 @@ export default function ReaderPage() {
     if (pageNumber) setReaderJump(pageNumber);
   };
 
+  const handleEditHighlight = (highlight: ReadingHighlight) => {
+    setEditingHighlight(highlight);
+    setEditColor(highlight.color);
+    setEditNote(highlight.note || '');
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateHighlight = async () => {
+    if (!editingHighlight || !id) return;
+
+    try {
+      await updateHighlight.mutateAsync({
+        id: editingHighlight.id,
+        bookId: id,
+        color: editColor,
+        note: editNote,
+      });
+
+      setEditDialogOpen(false);
+      setEditingHighlight(null);
+      setEditNote('');
+      toast({
+        title: 'Destaque atualizado',
+        description: 'A cor e a anotação foram salvas.',
+      });
+    } catch {
+      toast({ title: 'Não foi possível atualizar o destaque', variant: 'destructive' });
+    }
+  };
+
   if (bookLoading || progressLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -327,14 +364,24 @@ export default function ReaderPage() {
                       <span className="text-[11px] text-muted-foreground">
                         {new Date(highlight.created_at).toLocaleDateString('pt-BR')}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteHighlight.mutate({ id: highlight.id, bookId: id })}
-                        aria-label="Excluir destaque"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditHighlight(highlight)}
+                          aria-label="Editar destaque"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteHighlight.mutate({ id: highlight.id, bookId: id })}
+                          aria-label="Excluir destaque"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -465,6 +512,67 @@ export default function ReaderPage() {
             <Button onClick={handleSaveHighlight} disabled={!selection || addHighlight.isPending}>
               {addHighlight.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Salvar destaque
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar destaque</DialogTitle>
+            <DialogDescription>
+              Altere a cor do marca-texto ou atualize sua anotação.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingHighlight && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/60 p-3">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {editingHighlight.page_number ? `Página ${editingHighlight.page_number}` : 'Trecho destacado'}
+                </p>
+                <p className="text-sm leading-relaxed">“{editingHighlight.selected_text}”</p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium mb-2">Cor</p>
+                <div className="flex gap-2">
+                  {highlightOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setEditColor(option.value)}
+                      className={`h-9 w-9 rounded-full border-2 transition-transform ${
+                        editColor === option.value ? 'border-foreground scale-110' : 'border-transparent'
+                      }`}
+                      style={{ background: option.color }}
+                      aria-label={option.label}
+                      title={option.label}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="edit-highlight-note" className="text-sm font-medium">Anotação</label>
+                <Textarea
+                  id="edit-highlight-note"
+                  value={editNote}
+                  onChange={(event) => setEditNote(event.target.value)}
+                  placeholder="Adicione ou atualize sua anotação..."
+                  className="mt-2"
+                  maxLength={2000}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleUpdateHighlight} disabled={!editingHighlight || updateHighlight.isPending}>
+              {updateHighlight.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Salvar alterações
             </Button>
           </DialogFooter>
         </DialogContent>
