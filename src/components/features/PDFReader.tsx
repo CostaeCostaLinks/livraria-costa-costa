@@ -73,6 +73,8 @@ export function PDFReader({
   const scrollFrameRef = useRef<number | null>(null);
   const lastTargetPageRef = useRef<number | null>(null);
   const touchRef = useRef<{ dist: number } | null>(null);
+  const selectionTimerRef = useRef<number | null>(null);
+  const lastSelectionSignatureRef = useRef<string>('');
 
   const clearRestoreTimers = useCallback(() => {
     restoreTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -237,6 +239,10 @@ export function PDFReader({
 
       if (!rects.length) return;
 
+      const signature = `${pageNumber}:${selectedText}:${rects.length}`;
+      if (lastSelectionSignatureRef.current === signature) return;
+      lastSelectionSignatureRef.current = signature;
+
       onTextSelection({
         selectedText,
         pageNumber,
@@ -245,8 +251,53 @@ export function PDFReader({
       });
 
       selection.removeAllRanges();
+
+      window.setTimeout(() => {
+        if (lastSelectionSignatureRef.current === signature) {
+          lastSelectionSignatureRef.current = '';
+        }
+      }, 1200);
     }, 0);
   }, [onTextSelection]);
+
+  const queueTextSelection = useCallback((delay = 850) => {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+    }
+
+    selectionTimerRef.current = window.setTimeout(() => {
+      selectionTimerRef.current = null;
+      handleTextSelection();
+    }, delay);
+  }, [handleTextSelection]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
+    if (!isCoarsePointer) return;
+
+    const onSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+
+      const node = selection.getRangeAt(0).commonAncestorContainer;
+      const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+      if (!element || !container.contains(element)) return;
+
+      queueTextSelection(900);
+    };
+
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange);
+      if (selectionTimerRef.current !== null) {
+        window.clearTimeout(selectionTimerRef.current);
+        selectionTimerRef.current = null;
+      }
+    };
+  }, [queueTextSelection]);
 
   const handleTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
@@ -274,7 +325,9 @@ export function PDFReader({
   };
 
   const handleTouchEnd = () => {
+    const wasPinching = touchRef.current !== null;
     touchRef.current = null;
+    if (!wasPinching) queueTextSelection(650);
   };
 
   function onDocumentLoadSuccess({ numPages: total }: { numPages: number }) {

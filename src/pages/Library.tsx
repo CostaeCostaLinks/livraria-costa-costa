@@ -50,11 +50,12 @@ export default function Library() {
         </div>
       ) : books && books.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6">
-          {books.map((book: any) => (
+          {books.map((book: any, index: number) => (
             <BookCard 
               key={book.id} 
               book={book} 
-              progress={book.progress} 
+              progress={book.progress}
+              imagePriority={index < 4}
               onClick={() => navigate(`/read/${book.id}`)}
             />
           ))}

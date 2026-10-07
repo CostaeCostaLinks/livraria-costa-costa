@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { getStorageObjectPath } from '@/lib/storage';
+import { optimizeImageFile } from '@/lib/imageOptimization';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +30,8 @@ export default function Admin() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [optimizingCovers, setOptimizingCovers] = useState(false);
+  const [coverOptimizationProgress, setCoverOptimizationProgress] = useState('');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -156,8 +159,17 @@ export default function Admin() {
       }
 
       if (coverFile) {
-        const name = `covers/capa-${Date.now()}.${coverFile.name.split('.').pop()}`;
-        const { error: coverUploadError } = await supabase.storage.from('books').upload(name, coverFile);
+        const optimizedCover = await optimizeImageFile(coverFile, {
+          maxWidth: 900,
+          maxHeight: 1350,
+          quality: 0.8,
+          filename: coverFile.name,
+        });
+        const name = `covers/capa-${Date.now()}.webp`;
+        const { error: coverUploadError } = await supabase.storage.from('books').upload(name, optimizedCover, {
+          contentType: 'image/webp',
+          cacheControl: '31536000',
+        });
         if (coverUploadError) throw coverUploadError;
         coverUrl = name;
       }
@@ -237,8 +249,17 @@ export default function Admin() {
 
       let coverUrl = null;
       if (postCover) {
-        const name = `blog/post-${Date.now()}.${postCover.name.split('.').pop()}`;
-        const { error: postCoverUploadError } = await supabase.storage.from('books').upload(name, postCover);
+        const optimizedCover = await optimizeImageFile(postCover, {
+          maxWidth: 1200,
+          maxHeight: 800,
+          quality: 0.8,
+          filename: postCover.name,
+        });
+        const name = `blog/post-${Date.now()}.webp`;
+        const { error: postCoverUploadError } = await supabase.storage.from('books').upload(name, optimizedCover, {
+          contentType: 'image/webp',
+          cacheControl: '31536000',
+        });
         if (postCoverUploadError) throw postCoverUploadError;
         coverUrl = name;
       }
@@ -271,6 +292,80 @@ export default function Admin() {
     } finally { setLoading(false); }
   };
 
+
+  const optimizeExistingBookCovers = async () => {
+    if (!books?.length) return;
+    if (!confirm('Otimizar as capas existentes para carregarem mais rápido no celular?')) return;
+
+    setOptimizingCovers(true);
+    let optimized = 0;
+    let skipped = 0;
+
+    try {
+      for (let index = 0; index < books.length; index += 1) {
+        const book = books[index] as any;
+        const path = getStorageObjectPath(book.cover_url);
+        setCoverOptimizationProgress(`${index + 1}/${books.length}`);
+
+        if (!path) {
+          skipped += 1;
+          continue;
+        }
+
+        const { data: blob, error: downloadError } = await supabase.storage.from('books').download(path);
+        if (downloadError) throw downloadError;
+
+        if (blob.size <= 450_000 && path.toLowerCase().endsWith('.webp')) {
+          skipped += 1;
+          continue;
+        }
+
+        const optimizedFile = await optimizeImageFile(blob, {
+          maxWidth: 900,
+          maxHeight: 1350,
+          quality: 0.78,
+          filename: `capa-${book.id}.webp`,
+        });
+
+        const newPath = `covers/optimized-${book.id}-${Date.now()}.webp`;
+        const { error: uploadError } = await supabase.storage.from('books').upload(newPath, optimizedFile, {
+          contentType: 'image/webp',
+          cacheControl: '31536000',
+        });
+        if (uploadError) throw uploadError;
+
+        const { error: updateError } = await supabase
+          .from('books')
+          .update({ cover_url: newPath })
+          .eq('id', book.id);
+
+        if (updateError) {
+          await supabase.storage.from('books').remove([newPath]);
+          throw updateError;
+        }
+
+        try {
+          await supabase.storage.from('books').remove([path]);
+        } catch (cleanupError) {
+          console.error('Erro ao remover capa antiga:', cleanupError);
+        }
+
+        optimized += 1;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['admin-books'] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['my-library'] });
+      toast.success(`Capas otimizadas: ${optimized}. Mantidas sem alteração: ${skipped}.`);
+    } catch (error) {
+      console.error('Erro ao otimizar capas:', error);
+      toast.error('A otimização foi interrompida. As capas já concluídas foram preservadas.');
+    } finally {
+      setOptimizingCovers(false);
+      setCoverOptimizationProgress('');
+    }
+  };
+
   const deletePost = async (id: string) => {
     if (!confirm('Excluir este artigo?')) return;
 
@@ -295,7 +390,18 @@ export default function Admin() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl pb-24">
-      <h1 className="text-3xl font-serif font-bold text-primary mb-6">Painel Administrativo</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-serif font-bold text-primary">Painel Administrativo</h1>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={optimizeExistingBookCovers}
+          disabled={optimizingCovers || loading}
+        >
+          {optimizingCovers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+          {optimizingCovers ? `Otimizando ${coverOptimizationProgress}` : 'Otimizar capas'}
+        </Button>
+      </div>
       {(booksError || postsError) && (
         <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
           <p className="font-semibold text-destructive">Parte dos dados administrativos não pôde ser carregada.</p>

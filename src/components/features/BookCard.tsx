@@ -17,9 +17,10 @@ interface BookCardProps {
   progress?: number;
   onClick?: (book: Book) => void;
   isLoading?: boolean;
+  imagePriority?: boolean;
 }
 
-export function BookCard({ book, progress, onClick, isLoading = false }: BookCardProps) {
+export function BookCard({ book, progress, onClick, isLoading = false, imagePriority = false }: BookCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
 
   if (isLoading || !book) {
@@ -65,7 +66,8 @@ export function BookCard({ book, progress, onClick, isLoading = false }: BookCar
             className={`h-full w-full object-cover transition-all duration-700 ease-out ${
               imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
             }`}
-            loading="lazy"
+            loading={imagePriority ? 'eager' : 'lazy'}
+            fetchPriority={imagePriority ? 'high' : 'auto'}
             decoding="async"
             onLoad={() => setImageLoaded(true)}
             onError={(e) => { e.currentTarget.src = "https://placehold.co/500x750?text=Sem+Capa"; setImageLoaded(true); }}

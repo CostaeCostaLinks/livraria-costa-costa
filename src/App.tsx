@@ -54,7 +54,7 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
-  const { isInstallable, installApp } = usePWAInstall();
+  const { isInstallable, isStandalone, installApp } = usePWAInstall();
   const { theme, toggle } = useTheme(); // Corrigido: usando 'toggle'
   const location = useLocation();
 
@@ -174,7 +174,7 @@ function AppContent() {
                   <DonationModal />
                 </Suspense>
 
-                {isInstallable && (
+                {isInstallable && !isStandalone && (
                   <Button 
                     variant="outline" 
                     size="sm" 
