@@ -1,164 +1,149 @@
-# 📚 Costa&Costa Library - Plataforma de Leitura Digital Gratuita
+# Costa & Costa Library
 
-Um aplicativo web progressivo (PWA) para leitura gratuita de livros em formato PDF e EPUB, inspirado no Kindle.
+Plataforma de leitura digital em React, TypeScript e Vite, com autenticação Supabase, leitura de PDF/EPUB, progresso de leitura, marcadores, destaques, anotações e painel administrativo.
 
-## ✨ Funcionalidades
+## Produção
 
-- 🔐 **Autenticação**: Login e cadastro com email/senha
-- 📖 **Leitura Online**: Suporte completo para PDF e EPUB
-- 🌓 **Modo Escuro/Claro**: Tema ajustável para conforto de leitura
-- 📊 **Progresso de Leitura**: Salva automaticamente onde você parou
-- 📚 **Biblioteca Pessoal**: Acompanhe livros iniciados e seu progresso
-- 🔍 **Busca e Filtros**: Encontre livros por título, autor ou categoria
-- 👨‍💼 **Painel Administrativo**: Upload de novos livros (apenas admins)
-- 📱 **PWA**: Instale no seu dispositivo e use offline
-- 🎨 **Interface Moderna**: Design inspirado em Kindle e Apple Books
+- Aplicação: https://livraria-costa-costa.vercel.app
+- Frontend: React 19 + TypeScript + Vite
+- Backend/Auth/Database/Storage: Supabase
+- Deploy: Vercel
+- Roteamento SPA: configurado em `vercel.json`
 
-## 🛠️ Tecnologias
+## Funcionalidades
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Estilização**: Tailwind CSS + shadcn/ui
-- **Backend**: OnSpace Cloud (compatível com Supabase API)
-- **State Management**: Zustand + TanStack Query
-- **Leitores**: react-pdf (PDF) + react-reader (EPUB)
-- **Roteamento**: React Router v6
+- autenticação por email e senha;
+- biblioteca pessoal com progresso de leitura;
+- leitor PDF com retomada de página, marcadores, destaques e anotações;
+- leitor EPUB com retomada por CFI, tema claro/escuro e ajuste de fonte;
+- busca e categorias;
+- Blog;
+- Bio / Links;
+- painel administrativo para livros e posts;
+- PWA instalável;
+- Storage privado com URLs assinadas.
 
-## 🚀 Como Rodar Localmente
+## Segurança
 
-### 1. Pré-requisitos
+O projeto utiliza:
 
-- Node.js 18+ instalado
-- Conta no OnSpace (ou Supabase)
+- Row Level Security (RLS) nas tabelas da aplicação;
+- perfil administrativo controlado em `user_profiles.role`;
+- bucket `books` privado;
+- leitura de arquivos por URLs assinadas;
+- upload e exclusão de objetos do Storage restritos ao perfil administrador;
+- progresso, marcadores e destaques restritos ao próprio usuário;
+- função `handle_new_user()` sem execução direta por `anon` ou `authenticated`.
 
-### 2. Clone e Instale
+A proteção contra senhas vazadas do Supabase não está disponível no plano Free. Se o projeto migrar para Pro ou superior, habilite **Leaked Password Protection** em Authentication.
 
-```bash
-git clone <seu-repositorio>
-cd Costa&Costa Library
-npm install
+## Variáveis de ambiente
+
+A aplicação exige:
+
+```env
+VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+VITE_SUPABASE_ANON_KEY=SUA_CHAVE_PUBLICA
 ```
 
-### 3. Configure as Variáveis de Ambiente
+Nunca coloque `service_role`, secret keys ou credenciais administrativas no frontend.
 
-As variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` são geradas automaticamente pelo OnSpace.
-
-### 4. Execute o Projeto
+## Desenvolvimento local
 
 ```bash
+npm install
 npm run dev
 ```
 
-Acesse: `http://localhost:5173`
+Por padrão, o Vite usa `http://localhost:5173`.
 
-## 🗄️ Estrutura do Banco de Dados
+## Validação antes de produção
 
-### Tabelas Criadas
+Execute:
 
-#### `books`
-- `id` (uuid, PK)
-- `title` (text)
-- `author` (text)
-- `description` (text, nullable)
-- `category` (text)
-- `cover_url` (text, nullable)
-- `file_url` (text)
-- `file_type` (pdf | epub)
-- `created_at` (timestamptz)
+```bash
+npm run build
+```
 
-#### `reading_progress`
-- `id` (uuid, PK)
-- `user_id` (uuid, FK → user_profiles)
-- `book_id` (uuid, FK → books)
-- `progress` (numeric, 0-100)
-- `last_position` (text, nullable)
-- `updated_at` (timestamptz)
+Depois faça smoke test de:
 
-#### `user_profiles` (modificada)
-- Adicionada coluna: `role` (user | admin)
+- login e logout;
+- persistência de sessão após recarregar;
+- Home e Minha Biblioteca;
+- PDF e EPUB;
+- Blog e Bio / Links;
+- Admin com perfil administrador;
+- bloqueio do Admin para usuário comum;
+- upload/substituição de arquivo no Admin;
+- acesso aos arquivos apenas por URL assinada.
 
-### Storage Bucket
-- **Bucket**: `books` (público)
-- Armazena arquivos PDF/EPUB e capas
+## Service Worker / PWA
 
-## 🔐 Sistema de Permissões
+O build executa `npm run update-sw`, que altera a versão de cache em `public/sw.js`.
 
-### RLS (Row Level Security)
+Durante validações locais, esse arquivo pode aparecer como modificado. Caso a alteração seja apenas a versão gerada pelo build e não deva ser commitada:
 
-**Books (Leitura pública)**:
-- Qualquer usuário pode ler livros
-- Apenas admins podem inserir/atualizar/deletar
+```bash
+git restore public/sw.js
+```
 
-**Reading Progress (Privado)**:
-- Usuários só acessam seu próprio progresso
+O Service Worker não intercepta chamadas para `supabase.co` nem arquivos PDF.
 
-**Storage**:
-- Leitura pública
-- Upload apenas para admins
+## Banco e Storage
 
-## 👨‍💼 Como se Tornar Admin
+Principais tabelas:
 
-Por padrão, novos usuários têm `role = 'user'`. Para tornar-se admin:
+- `books`
+- `posts`
+- `user_profiles`
+- `reading_progress`
+- `reading_bookmarks`
+- `reading_highlights`
 
-1. Acesse o painel do OnSpace Cloud
-2. Vá em **Data** > **user_profiles**
-3. Edite seu usuário e altere `role` para `'admin'`
-4. Faça logout e login novamente
+Bucket:
 
-## 📱 PWA - Instalação
+- `books` — **privado**
 
-O app pode ser instalado como PWA em dispositivos móveis e desktop:
+As referências persistidas de arquivos/capas são caminhos relativos no bucket. O frontend gera URLs assinadas em tempo de execução.
 
-1. Abra o app no navegador
-2. Clique em "Instalar" ou "Adicionar à tela inicial"
-3. Use como aplicativo nativo!
+## Deploy na Vercel
 
-**Funcionalidades offline**:
-- Cache de páginas visitadas
-- Livros já carregados ficam disponíveis
+Configuração SPA:
 
-## 🎨 Personalização
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
 
-### Cores e Tema
-Edite `src/index.css` e `tailwind.config.ts` para customizar:
-- Cores primárias
-- Gradientes
-- Animações
-- Fontes
+No projeto da Vercel, configure as variáveis:
 
-### Categorias de Livros
-Adicione categorias em:
-- `src/pages/Home.tsx` (array `CATEGORIES`)
-- `src/pages/Admin.tsx` (array `CATEGORIES`)
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-## 📤 Deploy no OnSpace
+O comando de build é:
 
-1. Clique no botão **Publish** no canto superior direito
-2. Escolha entre:
-   - **Publish**: Publica em `seu-app.onspace.app`
-   - **Add Existing Domain**: Use domínio customizado
+```bash
+npm run build
+```
 
-## 🐛 Troubleshooting
+e o diretório de saída é:
 
-### Erro ao carregar PDF
-- Verifique se o arquivo está acessível publicamente
-- Confirme que o CORS está configurado no bucket
+```text
+dist
+```
 
-### Progresso não salva
-- Verifique se o usuário está autenticado
-- Confirme que as RLS policies estão ativas
+## Observações
 
-### Admin não consegue fazer upload
-- Verifique se o campo `role` está como `'admin'`
-- Confirme as policies do Storage
+- O aviso de `caniuse-lite` desatualizado não bloqueia o build.
+- O projeto possui dependências com diferenças de peer dependency relacionadas ao React 19; não use `npm install --force` ou `--legacy-peer-deps` sem análise prévia.
+- Para mudanças de banco, mantenha migrations versionadas em `supabase/migrations`.
 
-## 📝 Licença
+## Licença
 
-MIT License - Sinta-se livre para usar em seus projetos!
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Abra uma issue ou pull request.
-
----
-
-**Desenvolvido com ❤️ usando OnSpace + React**
+Consulte a política de uso/licenciamento definida pelo mantenedor do projeto.
