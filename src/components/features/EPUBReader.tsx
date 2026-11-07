@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EpubView } from 'react-reader';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { ChevronLeft, ChevronRight, Loader2, Moon, Settings2, Sun, Type, X } from 'lucide-react';
-import { useTheme } from '@/contexts/ThemeContext';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 
 export interface EPUBTextSelection {
@@ -18,6 +16,8 @@ interface EPUBReaderProps {
   onLocationChange?: (location: string, progress?: number) => void;
   highlights?: ReadingHighlight[];
   onTextSelection?: (selection: EPUBTextSelection) => void;
+  fontSize?: number;
+  readerDark?: boolean;
 }
 
 const epubHighlightStyles: Record<string, Record<string, string>> = {
@@ -47,13 +47,11 @@ export function EPUBReader({
   onLocationChange,
   highlights = [],
   onTextSelection,
+  fontSize = 100,
+  readerDark = false,
 }: EPUBReaderProps) {
   const [location, setLocation] = useState<string | number>(initialLocation || 0);
-  const [fontSize, setFontSize] = useState(100);
   const [rendition, setRendition] = useState<any>(null);
-  const { theme } = useTheme();
-  const [readerDark, setReaderDark] = useState(theme === 'dark');
-  const [showControls, setShowControls] = useState(false);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
   );
@@ -85,7 +83,6 @@ export function EPUBReader({
     const media = window.matchMedia('(max-width: 767px)');
     const handleChange = (event: MediaQueryListEvent) => {
       setIsMobile(event.matches);
-      setShowControls(false);
     };
 
     setIsMobile(media.matches);
@@ -284,14 +281,6 @@ export function EPUBReader({
     onLocationChange?.(loc, progress);
   };
 
-  const handleFontSizeChange = (value: number[]) => {
-    const newSize = value[0];
-    fontSizeRef.current = newSize;
-    setFontSize(newSize);
-    applyReaderTheme(renditionRef.current, readerDarkRef.current, newSize);
-    window.setTimeout(syncHighlights, 120);
-  };
-
   const handleTextSelected = useCallback((cfiRange: string, contents: any) => {
     if (!cfiRange) return;
 
@@ -360,66 +349,6 @@ export function EPUBReader({
 
   return (
     <div className={`relative h-full overflow-hidden ${readerDark ? 'bg-[#0b1220]' : 'bg-white'}`}>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        className="absolute top-3 right-3 z-30 h-10 w-10 rounded-full shadow-md"
-        onClick={() => setShowControls((value) => !value)}
-        aria-label={showControls ? 'Fechar configurações de leitura' : 'Abrir configurações de leitura'}
-        title={showControls ? 'Fechar configurações' : 'Configurações de leitura'}
-      >
-        {showControls ? <X className="h-5 w-5" /> : <Settings2 className="h-5 w-5" />}
-      </Button>
-
-      {showControls && (
-        <div className="absolute top-14 right-3 z-30 bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg max-w-[210px]">
-          <div className="space-y-3 min-w-[170px]">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <Type className="h-4 w-4" /> Tamanho
-              </span>
-              <span className="text-sm text-muted-foreground">{fontSize}%</span>
-            </div>
-
-            <Slider
-              value={[fontSize]}
-              onValueChange={handleFontSizeChange}
-              min={80}
-              max={150}
-              step={10}
-            />
-
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={readerDark ? 'outline' : 'default'}
-                size="sm"
-                onClick={() => {
-                  readerDarkRef.current = false;
-                  setReaderDark(false);
-                  applyReaderTheme(renditionRef.current, false, fontSizeRef.current);
-                  window.setTimeout(syncHighlights, 120);
-                }}
-              >
-                <Sun className="h-4 w-4 mr-1" /> Claro
-              </Button>
-              <Button
-                variant={readerDark ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  readerDarkRef.current = true;
-                  setReaderDark(true);
-                  applyReaderTheme(renditionRef.current, true, fontSizeRef.current);
-                  window.setTimeout(syncHighlights, 120);
-                }}
-              >
-                <Moon className="h-4 w-4 mr-1" /> Escuro
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="absolute inset-0 z-10 px-8 sm:px-12">
         <EpubView
           key={isMobile ? 'epub-mobile' : 'epub-desktop'}
