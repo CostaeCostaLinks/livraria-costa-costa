@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EpubView } from 'react-reader';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { ChevronLeft, ChevronRight, Loader2, Moon, Sun, Type } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Moon, Settings2, Sun, Type, X } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 
@@ -53,6 +53,10 @@ export function EPUBReader({
   const [rendition, setRendition] = useState<any>(null);
   const { theme } = useTheme();
   const [readerDark, setReaderDark] = useState(theme === 'dark');
+  const [showControls, setShowControls] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
 
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
@@ -76,6 +80,18 @@ export function EPUBReader({
   useEffect(() => {
     if (locationOverride) setLocation(locationOverride);
   }, [locationOverride]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+      setShowControls(false);
+    };
+
+    setIsMobile(media.matches);
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
 
   const styleContents = useCallback((contents: any, dark: boolean, size: number) => {
     const doc = contents?.document;
