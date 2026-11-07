@@ -59,8 +59,27 @@ function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    if (!('serviceWorker' in navigator)) return;
+
+    if (import.meta.env.PROD) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
+      return;
+    }
+
+    // Em desenvolvimento, remove Service Workers antigos para evitar
+    // que bundles/cache de outra branch sejam servidos no localhost/LAN.
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => {});
+
+    if ('caches' in window) {
+      caches.keys()
+        .then((keys) => Promise.all(
+          keys
+            .filter((key) => key.startsWith('costa-costa-library-'))
+            .map((key) => caches.delete(key))
+        ))
+        .catch(() => {});
     }
   }, []);
 

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EpubView } from 'react-reader';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { ChevronLeft, ChevronRight, Loader2, Moon, Sun, Type } from 'lucide-react';
-import { useTheme } from '@/contexts/ThemeContext';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import type { ReadingHighlight } from '@/hooks/useReadingHighlights';
 
 export interface EPUBTextSelection {
@@ -18,6 +16,8 @@ interface EPUBReaderProps {
   onLocationChange?: (location: string, progress?: number) => void;
   highlights?: ReadingHighlight[];
   onTextSelection?: (selection: EPUBTextSelection) => void;
+  fontSize?: number;
+  readerDark?: boolean;
 }
 
 const epubHighlightStyles: Record<string, Record<string, string>> = {
@@ -47,12 +47,14 @@ export function EPUBReader({
   onLocationChange,
   highlights = [],
   onTextSelection,
+  fontSize = 100,
+  readerDark = false,
 }: EPUBReaderProps) {
   const [location, setLocation] = useState<string | number>(initialLocation || 0);
-  const [fontSize, setFontSize] = useState(100);
   const [rendition, setRendition] = useState<any>(null);
-  const { theme } = useTheme();
-  const [readerDark, setReaderDark] = useState(theme === 'dark');
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
 
   const renditionRef = useRef<any>(null);
   const locationsReadyRef = useRef(false);
@@ -77,6 +79,17 @@ export function EPUBReader({
     if (locationOverride) setLocation(locationOverride);
   }, [locationOverride]);
 
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+    };
+
+    setIsMobile(media.matches);
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
+
   const styleContents = useCallback((contents: any, dark: boolean, size: number) => {
     const doc = contents?.document;
     if (!doc) return;
@@ -96,6 +109,9 @@ export function EPUBReader({
         background: ${background} !important;
         background-color: ${background} !important;
         color: ${color} !important;
+        touch-action: pan-y !important;
+        overscroll-behavior-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
       }
       body, body p, body div, body span, body li,
       body h1, body h2, body h3, body h4, body h5, body h6,
@@ -265,14 +281,6 @@ export function EPUBReader({
     onLocationChange?.(loc, progress);
   };
 
-  const handleFontSizeChange = (value: number[]) => {
-    const newSize = value[0];
-    fontSizeRef.current = newSize;
-    setFontSize(newSize);
-    applyReaderTheme(renditionRef.current, readerDarkRef.current, newSize);
-    window.setTimeout(syncHighlights, 120);
-  };
-
   const handleTextSelected = useCallback((cfiRange: string, contents: any) => {
     if (!cfiRange) return;
 
@@ -341,54 +349,9 @@ export function EPUBReader({
 
   return (
     <div className={`relative h-full overflow-hidden ${readerDark ? 'bg-[#0b1220]' : 'bg-white'}`}>
-      <div className="absolute top-4 right-4 z-30 bg-background/95 backdrop-blur border border-border rounded-lg p-3 shadow-lg max-w-[210px]">
-        <div className="space-y-3 min-w-[170px]">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium flex items-center gap-2">
-              <Type className="h-4 w-4" /> Tamanho
-            </span>
-            <span className="text-sm text-muted-foreground">{fontSize}%</span>
-          </div>
-
-          <Slider
-            value={[fontSize]}
-            onValueChange={handleFontSizeChange}
-            min={80}
-            max={150}
-            step={10}
-          />
-
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant={readerDark ? 'outline' : 'default'}
-              size="sm"
-              onClick={() => {
-                readerDarkRef.current = false;
-                setReaderDark(false);
-                applyReaderTheme(renditionRef.current, false, fontSizeRef.current);
-                window.setTimeout(syncHighlights, 120);
-              }}
-            >
-              <Sun className="h-4 w-4 mr-1" /> Claro
-            </Button>
-            <Button
-              variant={readerDark ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                readerDarkRef.current = true;
-                setReaderDark(true);
-                applyReaderTheme(renditionRef.current, true, fontSizeRef.current);
-                window.setTimeout(syncHighlights, 120);
-              }}
-            >
-              <Moon className="h-4 w-4 mr-1" /> Escuro
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div className="absolute inset-0 z-10 px-8 sm:px-12">
         <EpubView
+          key={isMobile ? 'epub-mobile' : 'epub-desktop'}
           url={url}
           location={location}
           locationChanged={handleLocationChange}
@@ -409,33 +372,37 @@ export function EPUBReader({
             openAs: 'epub',
           }}
           epubOptions={{
-            flow: 'paginated',
-            manager: 'default',
-            spread: 'auto',
+            flow: isMobile ? 'scrolled-doc' : 'paginated',
+            manager: isMobile ? 'continuous' : 'default',
+            spread: isMobile ? 'none' : 'auto',
             allowScriptedContent: false,
           }}
         />
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
-        onClick={() => renditionRef.current?.prev?.()}
-        aria-label="Página anterior"
-      >
-        <ChevronLeft className="h-7 w-7" />
-      </Button>
+      {!isMobile && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
+            onClick={() => renditionRef.current?.prev?.()}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-7 w-7" />
+          </Button>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
-        onClick={() => renditionRef.current?.next?.()}
-        aria-label="Próxima página"
-      >
-        <ChevronRight className="h-7 w-7" />
-      </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-20 h-12 w-9"
+            onClick={() => renditionRef.current?.next?.()}
+            aria-label="Próxima página"
+          >
+            <ChevronRight className="h-7 w-7" />
+          </Button>
+        </>
+      )}
     </div>
   );
 }

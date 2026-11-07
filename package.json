@@ -9,7 +9,8 @@
     "build": "npm run update-sw && tsc && vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:lan": "vite --host 0.0.0.0 --port 5180 --force"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
