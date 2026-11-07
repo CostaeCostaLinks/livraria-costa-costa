@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Bookmark, Highlighter, List, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Bookmark, Highlighter, List, Loader2, Moon, Pencil, Settings2, Sun, Trash2, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
+import { useTheme } from '@/contexts/ThemeContext';
 import type { PDFTextSelection } from '@/components/features/PDFReader';
 import type { EPUBTextSelection } from '@/components/features/EPUBReader';
 import { useBook } from '@/hooks/useBooks';
@@ -49,6 +51,7 @@ export default function ReaderPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { theme } = useTheme();
 
   const {
     data: book,
@@ -84,6 +87,8 @@ export default function ReaderPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editColor, setEditColor] = useState<HighlightColor>('yellow');
   const [editNote, setEditNote] = useState('');
+  const [epubFontSize, setEpubFontSize] = useState(100);
+  const [epubDark, setEpubDark] = useState(theme === 'dark');
 
   const pendingSave = useRef<{ progress: number; lastPosition: string } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -395,6 +400,62 @@ export default function ReaderPage() {
           )}
         </Button>
 
+        {isEpub && (
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Configurações de leitura"
+                title="Configurações de leitura"
+              >
+                <Settings2 className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="rounded-t-2xl sm:left-auto sm:right-4 sm:bottom-4 sm:w-[360px] sm:max-w-none sm:rounded-2xl">
+              <SheetHeader>
+                <SheetTitle>Configurações de leitura</SheetTitle>
+                <SheetDescription>Ajuste o EPUB sem cobrir o texto.</SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-6">
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <Type className="h-4 w-4" /> Tamanho
+                    </span>
+                    <span className="text-sm text-muted-foreground">{epubFontSize}%</span>
+                  </div>
+                  <Slider
+                    value={[epubFontSize]}
+                    onValueChange={(value) => setEpubFontSize(value[0])}
+                    min={80}
+                    max={150}
+                    step={10}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={epubDark ? 'outline' : 'default'}
+                    onClick={() => setEpubDark(false)}
+                  >
+                    <Sun className="mr-2 h-4 w-4" /> Claro
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={epubDark ? 'default' : 'outline'}
+                    onClick={() => setEpubDark(true)}
+                  >
+                    <Moon className="mr-2 h-4 w-4" /> Escuro
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Abrir destaques e anotações">
@@ -533,6 +594,8 @@ export default function ReaderPage() {
               onLocationChange={handleEpubLocationChange}
               highlights={highlights}
               onTextSelection={handleEpubTextSelection}
+              fontSize={epubFontSize}
+              readerDark={epubDark}
             />
           ) : (
             <PDFReader
