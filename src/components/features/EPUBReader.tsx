@@ -112,6 +112,9 @@ export function EPUBReader({
         background: ${background} !important;
         background-color: ${background} !important;
         color: ${color} !important;
+        touch-action: pan-y !important;
+        overscroll-behavior-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
       }
       body, body p, body div, body span, body li,
       body h1, body h2, body h3, body h4, body h5, body h6,
